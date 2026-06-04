@@ -947,13 +947,14 @@
   // ---- Mobile tab bar ----
   function toggleMobileDraw() {
     const tab = document.getElementById('m-tab-draw');
+    const tb  = document.getElementById('draw-toolbar');
+    // Limpiar inline style del init móvil antes del toggle
+    tb.style.display = '';
     toggleDrawToolbar();
-    const isOpen = document.getElementById('draw-toolbar').classList.contains('open');
+    const isOpen = tb.classList.contains('open');
+    // Forzar display porque el init móvil pone style.display='none'
+    tb.style.display = isOpen ? 'flex' : 'none';
     tab.classList.toggle('active', isOpen);
-    // Mostrar draw-toolbar en móvil si está abierto
-    if (isOpen) {
-      document.getElementById('draw-toolbar').style.display = 'flex';
-    }
   }
 
   function toggleMobileInd() {
