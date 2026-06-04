@@ -1054,8 +1054,24 @@ Banda inf    = SMA(20) − 2σ</div>
 
   function closeConfig() { document.getElementById('cfg-overlay').classList.remove('open'); }
 
-  function openInfo()  { document.getElementById('info-overlay').classList.add('open'); }
-  function closeInfo() { document.getElementById('info-overlay').classList.remove('open'); }
+  function openInfo() {
+    const ov = document.getElementById('info-overlay');
+    ov.classList.add('open');
+    if (window.innerWidth <= 768) {
+      // En móvil: sin fondo oscuro — es un panel tab
+      ov.style.background = 'transparent';
+      ov.style.backdropFilter = 'none';
+      ov.style.pointerEvents = 'none';
+      document.getElementById('info-panel').style.pointerEvents = 'all';
+    }
+  }
+  function closeInfo() {
+    const ov = document.getElementById('info-overlay');
+    ov.classList.remove('open');
+    ov.style.background = '';
+    ov.style.backdropFilter = '';
+    ov.style.pointerEvents = '';
+  }
 
   async function saveConfig() {
     const keys = ['rsi_period','rsi_ma_period','rsi_oversold','rsi_overbought',
