@@ -584,7 +584,11 @@
     const tx     = e.touches[0].clientX - rect.left;
     const ty     = e.touches[0].clientY - rect.top;
     const hit    = _findNearestEndpoint(tx, ty);
-    if (!hit) return;
+    if (!hit) {
+      // Toque en zona vacía → deseleccionar línea
+      if (selectedId) { selectedId = null; redrawLines(); }
+      return;
+    }
 
     e.preventDefault();
     e.stopPropagation();
