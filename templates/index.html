@@ -1218,21 +1218,24 @@ Banda inf    = SMA(20) − 2σ</div>
   }
 
   function _makeTrendHandle(cx, cy, drawing, point) {
-    const ns = 'http://www.w3.org/2000/svg';
+    const ns       = 'http://www.w3.org/2000/svg';
+    const selected = drawing.id === selectedId;
     const g  = document.createElementNS(ns, 'g');
     g.style.pointerEvents = 'all';
     g.style.cursor = 'crosshair';
 
-    // Círculo visible
+    // Círculo visible — más grande si está seleccionado
     const vis = document.createElementNS(ns, 'circle');
-    vis.setAttribute('cx', cx); vis.setAttribute('cy', cy); vis.setAttribute('r', 6);
-    vis.setAttribute('fill', drawing.color);
-    vis.setAttribute('stroke', '#fff'); vis.setAttribute('stroke-width', '2');
+    vis.setAttribute('cx', cx); vis.setAttribute('cy', cy);
+    vis.setAttribute('r', selected ? 10 : 6);
+    vis.setAttribute('fill', selected ? '#fff' : drawing.color);
+    vis.setAttribute('stroke', selected ? drawing.color : '#fff');
+    vis.setAttribute('stroke-width', '2');
     vis.setAttribute('opacity', '0.95');
 
-    // Área de toque grande (invisible) — 24px radio para dedo
+    // Área de toque 32px de radio — fácil de tocar con el dedo
     const hit = document.createElementNS(ns, 'circle');
-    hit.setAttribute('cx', cx); hit.setAttribute('cy', cy); hit.setAttribute('r', 24);
+    hit.setAttribute('cx', cx); hit.setAttribute('cy', cy); hit.setAttribute('r', 32);
     hit.setAttribute('fill', 'transparent');
     hit.style.pointerEvents = 'all';
 
@@ -1245,7 +1248,8 @@ Banda inf    = SMA(20) − 2σ</div>
       dragEndpoint = { id: drawing.id, point };
       document.body.style.cursor     = 'crosshair';
       document.body.style.userSelect = 'none';
-      redrawLines();
+      // NO llamar redrawLines() aquí — destruiría el elemento bajo el dedo
+      // Se redibuja en onDragEnd()
     }
     g.addEventListener('mousedown', startEndpointDrag);
     g.addEventListener('touchstart', startEndpointDrag, { passive: false });
