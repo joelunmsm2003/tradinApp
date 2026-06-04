@@ -1212,6 +1212,20 @@ Banda inf    = SMA(20) − 2σ</div>
     g.addEventListener('touchstart', e => {
       e.stopPropagation(); e.preventDefault();
       startLineDrag(e.touches[0].clientX, e.touches[0].clientY);
+      if (!dragging) return;
+      priceChart.applyOptions({ handleScroll: false, handleScale: false });
+      function onMove(ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        onDragMove(ev.touches[0].clientX, ev.touches[0].clientY);
+      }
+      function onEnd() {
+        priceChart.applyOptions({ handleScroll: true, handleScale: true });
+        onDragEnd();
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend',  onEnd);
+      }
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend',  onEnd);
     }, { passive: false });
 
     return g;
@@ -1242,17 +1256,48 @@ Banda inf    = SMA(20) − 2σ</div>
     g.appendChild(hit);
     g.appendChild(vis);
 
-    function startEndpointDrag(e) {
+    g.addEventListener('mousedown', e => {
       e.stopPropagation(); e.preventDefault();
+      selectedId = drawing.id;
+      dragEndpoint = { id: drawing.id, point };
+      document.body.style.cursor = 'crosshair';
+      document.body.style.userSelect = 'none';
+    });
+
+    g.addEventListener('touchstart', e => {
+      e.preventDefault();
+      e.stopPropagation();
       selectedId   = drawing.id;
       dragEndpoint = { id: drawing.id, point };
-      document.body.style.cursor     = 'crosshair';
       document.body.style.userSelect = 'none';
-      // NO llamar redrawLines() aquí — destruiría el elemento bajo el dedo
-      // Se redibuja en onDragEnd()
-    }
-    g.addEventListener('mousedown', startEndpointDrag);
-    g.addEventListener('touchstart', startEndpointDrag, { passive: false });
+
+      // Deshabilitar scroll/zoom del chart mientras se arrastra el handle
+      priceChart.applyOptions({ handleScroll: false, handleScale: false });
+
+      function onMove(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!dragEndpoint) return;
+        const rect = svgEl.getBoundingClientRect();
+        const curX = ev.touches[0].clientX - rect.left;
+        const curY = ev.touches[0].clientY - rect.top;
+        const newTime  = priceChart.timeScale().coordinateToTime(curX);
+        const newPrice = candleSeries.coordinateToPrice(curY);
+        const idx = savedDrawings.findIndex(s => s.id === dragEndpoint.id);
+        if (idx !== -1 && newTime && newPrice != null) {
+          savedDrawings[idx][dragEndpoint.point] = { time: newTime, price: parseFloat(newPrice.toFixed(2)) };
+          redrawLines();
+        }
+      }
+      function onEnd() {
+        priceChart.applyOptions({ handleScroll: true, handleScale: true });
+        onDragEnd();
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend',  onEnd);
+      }
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend',  onEnd);
+    }, { passive: false });
     return g;
   }
 
