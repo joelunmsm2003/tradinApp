@@ -826,7 +826,16 @@
       deleteDrawing(selectedId);
       selectedId = null;
     }
-    if (e.key === 'Escape') { selectedId = null; redrawLines(); }
+    if (e.key === 'Escape') {
+      if (pendingTrendPoint) {
+        // Cancela el punto 1 sin salir del modo tendencia
+        pendingTrendPoint = null; previewMousePos = null;
+        hintEl.textContent = DRAW_HINTS.trend;
+        redrawLines();
+      } else {
+        selectedId = null; redrawLines();
+      }
+    }
   });
 
   // ---- Preview de tendencia al mover el mouse ----
@@ -878,9 +887,21 @@
   }
 
   async function saveDrawing(drawing) {
-    const res = await fetch('/api/drawings', { method:'POST', body:JSON.stringify(drawing) });
+    const res   = await fetch('/api/drawings', { method:'POST', body:JSON.stringify(drawing) });
     const saved = await res.json();
     savedDrawings.push(saved);
+    // Seleccionar la línea recién creada y salir del modo dibujo (estilo TradingView)
+    selectedId = saved.id;
+    setDrawMode(null);
+    if (document.getElementById('draw-toolbar').classList.contains('open')) {
+      document.getElementById('draw-toolbar').classList.remove('open');
+      document.getElementById('btn-draw-toggle').style.color = '';
+      // En móvil
+      if (window.innerWidth <= 768) {
+        document.getElementById('draw-toolbar').style.display = 'none';
+        document.getElementById('m-tab-draw')?.classList.remove('active');
+      }
+    }
     redrawLines();
   }
 
