@@ -1,6 +1,6 @@
 {
-  "name": "Qhapaq Charts",
-  "short_name": "Qhapaq",
+  "name": "Saturno Trading",
+  "short_name": "Saturno",
   "description": "Monitor de trading BTC en tiempo real",
   "start_url": "/",
   "display": "standalone",
