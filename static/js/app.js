@@ -542,25 +542,11 @@
     return g;
   }
 
-  // Contenedor HTML para los handles (escapa al pointer-events del SVG)
-  let _handleContainer = null;
-  function _getHandleContainer() {
-    if (!_handleContainer) {
-      _handleContainer = document.createElement('div');
-      _handleContainer.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:11;';
-      document.querySelector('#chart-price').parentElement.appendChild(_handleContainer);
-    }
-    return _handleContainer;
-  }
-  function _clearHandleOverlays() {
-    if (_handleContainer) _handleContainer.innerHTML = '';
-  }
+  function _clearHandleOverlays() {} // no-op — ya no usamos overlay HTML
 
   function _makeTrendHandle(cx, cy, drawing, point) {
     const ns       = 'http://www.w3.org/2000/svg';
     const selected = drawing.id === selectedId;
-
-    // Círculo SVG (solo visual)
     const vis = document.createElementNS(ns, 'circle');
     vis.setAttribute('cx', cx); vis.setAttribute('cy', cy);
     vis.setAttribute('r', selected ? 10 : 6);
@@ -568,62 +554,65 @@
     vis.setAttribute('stroke', selected ? drawing.color : '#fff');
     vis.setAttribute('stroke-width', '2');
     vis.setAttribute('opacity', '0.95');
-    vis.style.pointerEvents = 'none';
+    return vis;
+  }
 
-    // Botón HTML absolutamente posicionado — funciona aunque SVG tenga pointer-events:none
-    const btn = document.createElement('button');
-    const SIZE = 56;
-    btn.style.cssText = `
-      position:absolute;
-      left:${cx - SIZE/2}px; top:${cy - SIZE/2}px;
-      width:${SIZE}px; height:${SIZE}px;
-      border-radius:50%; background:transparent; border:none;
-      cursor:crosshair; pointer-events:all; z-index:12;
-      touch-action:none;
-    `;
-    _getHandleContainer().appendChild(btn);
+  // ---- Detección de endpoints por proximidad (touch móvil) ----
+  // Se engancha en el contenedor del chart — no depende de pointer-events del SVG
+  const _chartContainer = document.querySelector('#chart-price').parentElement;
+  const HANDLE_THRESHOLD = 36; // px de radio de detección
 
-    function startHandle(clientX, clientY) {
-      selectedId   = drawing.id;
-      dragEndpoint = { id: drawing.id, point };
-      priceChart.applyOptions({ handleScroll: false, handleScale: false });
+  function _findNearestEndpoint(tx, ty) {
+    for (const d of savedDrawings) {
+      if (d.type !== 'trend') continue;
+      const x1 = priceChart.timeScale().timeToCoordinate(d.p1.time);
+      const y1 = candleSeries.priceToCoordinate(d.p1.price);
+      const x2 = priceChart.timeScale().timeToCoordinate(d.p2.time);
+      const y2 = candleSeries.priceToCoordinate(d.p2.price);
+      for (const [px, py, pt] of [[x1,y1,'p1'],[x2,y2,'p2']]) {
+        if (px == null || py == null) continue;
+        if (Math.hypot(tx - px, ty - py) < HANDLE_THRESHOLD)
+          return { drawing: d, point: pt };
+      }
     }
-    function moveHandle(clientX, clientY) {
+    return null;
+  }
+
+  _chartContainer.addEventListener('touchstart', e => {
+    if (drawingMode) return; // no interferir con modo dibujo
+    const rect   = svgEl.getBoundingClientRect();
+    const tx     = e.touches[0].clientX - rect.left;
+    const ty     = e.touches[0].clientY - rect.top;
+    const hit    = _findNearestEndpoint(tx, ty);
+    if (!hit) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    selectedId   = hit.drawing.id;
+    dragEndpoint = { id: hit.drawing.id, point: hit.point };
+    priceChart.applyOptions({ handleScroll: false, handleScale: false });
+    redrawLines();
+
+    function onMove(ev) {
+      ev.preventDefault();
       if (!dragEndpoint) return;
-      const rect = svgEl.getBoundingClientRect();
-      const newTime  = priceChart.timeScale().coordinateToTime(clientX - rect.left);
-      const newPrice = candleSeries.coordinateToPrice(clientY - rect.top);
+      const newTime  = priceChart.timeScale().coordinateToTime(ev.touches[0].clientX - rect.left);
+      const newPrice = candleSeries.coordinateToPrice(ev.touches[0].clientY - rect.top);
       const idx = savedDrawings.findIndex(s => s.id === dragEndpoint.id);
       if (idx !== -1 && newTime && newPrice != null) {
         savedDrawings[idx][dragEndpoint.point] = { time: newTime, price: parseFloat(newPrice.toFixed(2)) };
         redrawLines();
       }
     }
-    function endHandle() {
+    function onEnd() {
       priceChart.applyOptions({ handleScroll: true, handleScale: true });
       onDragEnd();
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend',  onEnd);
     }
-
-    btn.addEventListener('mousedown', e => {
-      e.stopPropagation(); e.preventDefault();
-      startHandle(e.clientX, e.clientY);
-      function onMove(ev) { moveHandle(ev.clientX, ev.clientY); }
-      function onUp()    { endHandle(); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-
-    btn.addEventListener('touchstart', e => {
-      e.preventDefault(); e.stopPropagation();
-      startHandle(e.touches[0].clientX, e.touches[0].clientY);
-      function onMove(ev) { ev.preventDefault(); moveHandle(ev.touches[0].clientX, ev.touches[0].clientY); }
-      function onEnd()    { endHandle(); document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd); }
-      document.addEventListener('touchmove', onMove, { passive: false });
-      document.addEventListener('touchend',  onEnd);
-    }, { passive: false });
-
-    return vis; // solo el círculo visual al SVG
-  }
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend',  onEnd);
+  }, { passive: false });
 
   function _makePriceLabel(w, y, price, color) {
     const LW = 78, LH = 17, LR = 3, PAD = 6;
