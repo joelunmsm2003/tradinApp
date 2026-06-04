@@ -1607,10 +1607,20 @@ Banda inf    = SMA(20) − 2σ</div>
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
-  // En móvil el sidebar es overlay — empieza cerrado, el usuario lo abre
+  // En móvil: ocultar todo excepto gráfica + tab bar
   if (window.innerWidth <= 768) {
-    const btn = document.getElementById('sidebar-toggle');
-    btn.textContent = 'Señales ◀';
+    const hide = [
+      'legend', 'iv-bar', 'draw-toolbar',
+      'card-rsi', 'card-macd', 'card-stoch', 'history-section',
+    ];
+    hide.forEach(id => {
+      const el = document.getElementById(id) || document.querySelector('.' + id);
+      if (el) el.style.display = 'none';
+    });
+    // Ocultar h2, legend y resize-handle dentro de card-price
+    document.querySelectorAll('.chart-card h2, .legend, .iv-bar, .draw-toolbar, .resize-handle').forEach(el => {
+      el.style.display = 'none';
+    });
   }
 </script>
 </body>
