@@ -1609,17 +1609,21 @@ Banda inf    = SMA(20) − 2σ</div>
 
   // En móvil: ocultar todo excepto gráfica + tab bar
   if (window.innerWidth <= 768) {
-    const hide = [
-      'legend', 'iv-bar', 'draw-toolbar',
-      'card-rsi', 'card-macd', 'card-stoch', 'history-section',
-    ];
-    hide.forEach(id => {
-      const el = document.getElementById(id) || document.querySelector('.' + id);
-      if (el) el.style.display = 'none';
-    });
-    // Ocultar h2, legend y resize-handle dentro de card-price
-    document.querySelectorAll('.chart-card h2, .legend, .iv-bar, .draw-toolbar, .resize-handle').forEach(el => {
-      el.style.display = 'none';
+    document.querySelectorAll(
+      '.chart-card h2, .legend, .iv-bar, #draw-toolbar, .resize-handle, #card-rsi, #card-macd, #card-stoch, #history-section'
+    ).forEach(el => el.style.display = 'none');
+
+    // Forzar card-price a ocupar todo el ancho antes de renderizar el chart
+    const card = document.getElementById('card-price');
+    const wrap = document.getElementById('chart-price');
+    card.style.border = 'none';
+    card.style.borderRadius = '0';
+
+    // Recalcular ancho del chart tras ocultar elementos
+    requestAnimationFrame(() => {
+      const w = wrap.clientWidth || window.innerWidth;
+      const h = PRICE_H();
+      priceChart.applyOptions({ width: w, height: h });
     });
   }
 </script>
