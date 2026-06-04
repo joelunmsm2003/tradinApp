@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 cooldowns.json
+venv/
+env/
+.venv/

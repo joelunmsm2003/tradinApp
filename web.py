@@ -417,4 +417,5 @@ def history():
 
 if __name__ == "__main__":
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    app.run(host='0.0.0.0', debug=debug, port=5050)
+    port  = int(os.getenv("PORT", 5050))
+    app.run(host='0.0.0.0', debug=debug, port=port)
