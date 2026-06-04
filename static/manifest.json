@@ -9,7 +9,7 @@
   "theme_color": "#0d1117",
   "icons": [
     {
-      "src": "/static/images/logo.png",
+      "src": "/static/images/logo_aplicacion.png",
       "sizes": "any",
       "type": "image/png",
       "purpose": "any maskable"
