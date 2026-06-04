@@ -584,7 +584,7 @@ Banda inf    = SMA(20) − 2σ</div>
       </div>
       <div style="position:relative;">
         <div class="chart-wrap" id="chart-price"></div>
-        <svg id="drawing-svg" style="position:absolute;inset:0;pointer-events:none;z-index:9;" width="100%" height="100%"></svg>
+        <svg id="drawing-svg" style="position:absolute;inset:0;pointer-events:none;z-index:9;touch-action:none;" width="100%" height="100%"></svg>
         <div id="chart-overlay" style="position:absolute;inset:0;z-index:10;display:none;cursor:crosshair;"></div>
       </div>
       <div class="resize-handle" data-chart="chart-price"></div>
@@ -1219,13 +1219,26 @@ Banda inf    = SMA(20) − 2σ</div>
 
   function _makeTrendHandle(cx, cy, drawing, point) {
     const ns = 'http://www.w3.org/2000/svg';
-    const c = document.createElementNS(ns, 'circle');
-    c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', 5);
-    c.setAttribute('fill', drawing.color);
-    c.setAttribute('stroke', '#fff'); c.setAttribute('stroke-width', '1.5');
-    c.setAttribute('opacity', '0.9');
-    c.style.cursor = 'crosshair';
-    c.style.pointerEvents = 'all';
+    const g  = document.createElementNS(ns, 'g');
+    g.style.pointerEvents = 'all';
+    g.style.cursor = 'crosshair';
+
+    // Círculo visible
+    const vis = document.createElementNS(ns, 'circle');
+    vis.setAttribute('cx', cx); vis.setAttribute('cy', cy); vis.setAttribute('r', 6);
+    vis.setAttribute('fill', drawing.color);
+    vis.setAttribute('stroke', '#fff'); vis.setAttribute('stroke-width', '2');
+    vis.setAttribute('opacity', '0.95');
+
+    // Área de toque grande (invisible) — 24px radio para dedo
+    const hit = document.createElementNS(ns, 'circle');
+    hit.setAttribute('cx', cx); hit.setAttribute('cy', cy); hit.setAttribute('r', 24);
+    hit.setAttribute('fill', 'transparent');
+    hit.style.pointerEvents = 'all';
+
+    g.appendChild(hit);
+    g.appendChild(vis);
+
     function startEndpointDrag(e) {
       e.stopPropagation(); e.preventDefault();
       selectedId   = drawing.id;
@@ -1234,9 +1247,9 @@ Banda inf    = SMA(20) − 2σ</div>
       document.body.style.userSelect = 'none';
       redrawLines();
     }
-    c.addEventListener('mousedown', startEndpointDrag);
-    c.addEventListener('touchstart', startEndpointDrag, { passive: false });
-    return c;
+    g.addEventListener('mousedown', startEndpointDrag);
+    g.addEventListener('touchstart', startEndpointDrag, { passive: false });
+    return g;
   }
 
   function _makePriceLabel(w, y, price, color) {
