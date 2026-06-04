@@ -463,8 +463,10 @@
       const btn = document.getElementById(map[drawingMode]);
       btn.classList.add(drawingMode === 'delete' ? 'del-mode' : 'active');
     }
-    overlayEl.style.display   = drawingMode ? 'block' : 'none';
-    svgEl.style.pointerEvents = drawingMode === 'delete' ? 'all' : 'none';
+    // En modo borrar: ocultar overlay para que los clics lleguen al SVG
+    overlayEl.style.display      = (drawingMode && drawingMode !== 'delete') ? 'block' : 'none';
+    overlayEl.style.pointerEvents = drawingMode === 'delete' ? 'none' : 'all';
+    svgEl.style.pointerEvents    = drawingMode === 'delete' ? 'all' : 'none';
     hintEl.textContent        = drawingMode ? DRAW_HINTS[drawingMode] : '';
     overlayEl.style.cursor    = drawingMode === 'delete' ? 'default' : 'crosshair';
     redrawLines();
