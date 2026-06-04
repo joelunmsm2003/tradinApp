@@ -634,9 +634,16 @@ Banda inf    = SMA(20) − 2σ</div>
     return c;
   }
 
-  const PRICE_H = () => window.innerWidth < 768
-    ? window.innerHeight - 120   // móvil: pantalla completa menos header
-    : Math.max(400, window.innerHeight - 220);
+  const PRICE_H = () => {
+    if (window.innerWidth >= 768) return Math.max(400, window.innerHeight - 220);
+    // Móvil: mide el espacio real desde el chart-wrap hasta el borde de pantalla
+    const wrap = document.getElementById('chart-price');
+    if (wrap) {
+      const top = wrap.getBoundingClientRect().top;
+      return Math.max(200, window.innerHeight - top - 20);
+    }
+    return window.innerHeight - 185;
+  };
   const priceChart = makeChart('chart-price', PRICE_H());
   window.addEventListener('resize', () => {
     priceChart.applyOptions({ height: PRICE_H(), width: document.getElementById('chart-price').clientWidth });
