@@ -373,6 +373,11 @@ def get_drawings():
 @app.route("/api/drawings", methods=["POST"])
 def post_drawing():
     drawing = request.get_json(force=True)
+    _ALLOWED = {"type", "price", "time", "p1", "p2", "color"}
+    _REQUIRED = {"type", "color"}
+    drawing = {k: v for k, v in drawing.items() if k in _ALLOWED}
+    if not _REQUIRED.issubset(drawing):
+        return jsonify({"error": "campos requeridos: type, color"}), 400
     drawing["id"] = str(uuid.uuid4())
     drawings = _load_drawings()
     drawings.append(drawing)
@@ -383,10 +388,12 @@ def post_drawing():
 @app.route("/api/drawings/<drawing_id>", methods=["PATCH"])
 def patch_drawing(drawing_id):
     update = request.get_json(force=True)
+    _ALLOWED = {"type", "price", "time", "p1", "p2", "color"}
+    safe = {k: v for k, v in update.items() if k in _ALLOWED}
     drawings = _load_drawings()
     for d in drawings:
         if d["id"] == drawing_id:
-            d.update(update)
+            d.update(safe)
             break
     _save_drawings(drawings)
     return jsonify({"ok": True})
@@ -409,4 +416,5 @@ def history():
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', debug=True, port=5050)
+    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    app.run(host='0.0.0.0', debug=debug, port=5050)
