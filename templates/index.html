@@ -94,10 +94,35 @@
 
     /* ---- Responsive ---- */
     @media (max-width: 768px) {
-      header { padding: 6px 10px; flex-wrap: wrap; gap: 6px; }
-      header h1 { font-size: 0.9rem; }
-      #price-badge { font-size: 1.1rem; }
-      main { padding: 4px 6px; gap: 6px; }
+      header { display: none !important; }
+      #btn-draw-toggle, .btn-maximize { display: none !important; }
+      #sidebar-toggle { display: none !important; }
+      .legend { display: none !important; }
+      main { padding: 4px 6px 70px; gap: 6px; }
+
+      /* Barra de tabs inferior */
+      #mobile-tabbar {
+        display: flex !important;
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 350;
+        background: #161b22; border-top: 1px solid #30363d;
+        height: 58px; align-items: center; justify-content: space-around;
+      }
+      .m-tab {
+        display: flex; flex-direction: column; align-items: center;
+        gap: 3px; background: none; border: none; color: #8b949e;
+        cursor: pointer; font-size: 0.6rem; padding: 6px 10px;
+        transition: color .15s; flex: 1;
+      }
+      .m-tab:hover, .m-tab.active { color: #f0883e; }
+      .m-tab svg { width: 20px; height: 20px; }
+
+      /* Panel flotante de indicadores */
+      #mobile-ind-panel {
+        display: none; position: fixed; bottom: 58px; left: 0; right: 0;
+        z-index: 340; background: #161b22; border-top: 1px solid #30363d;
+        padding: 12px 14px; flex-wrap: wrap; gap: 6px;
+      }
+      #mobile-ind-panel.open { display: flex !important; }
       #top-row { flex-direction: column; }
       #sidebar {
         position: fixed !important; inset: 0 !important;
@@ -183,6 +208,8 @@
     .chart-card.maximized .legend { padding: 4px 14px; }
 
     #signals-panel { display: flex; flex-direction: column; gap: 9px; }
+    #mobile-tabbar { display: none; }
+    #mobile-ind-panel { display: none; }
 
     .signal-card {
       background: #161b22; border: 1px solid #21262d; border-radius: 8px;
@@ -617,6 +644,40 @@ Banda inf    = SMA(20) − 2σ</div>
 
 <button id="sidebar-toggle" onclick="toggleSidebar()" title="Señales">Señales ◀</button>
 
+<!-- Panel de indicadores móvil -->
+<div id="mobile-ind-panel">
+  <button class="toggle-btn vol active" id="m-btn-vol"  onclick="toggleOverlay('vol')"><span class="dot" style="background:#3fb95066"></span>Vol</button>
+  <button class="toggle-btn bb active"  id="m-btn-bb"   onclick="toggleOverlay('bb')"><span class="dot" style="background:#58a6ff"></span>BB</button>
+  <button class="toggle-btn ema active" id="m-btn-ema"  onclick="toggleOverlay('ema')"><span class="dot" style="background:#f0883e"></span>EMA</button>
+  <button class="toggle-btn rsi"        id="m-btn-rsi"  onclick="toggleOverlay('rsi')"><span class="dot" style="background:#f0883e"></span>RSI</button>
+  <button class="toggle-btn macd"       id="m-btn-macd" onclick="toggleOverlay('macd')"><span class="dot" style="background:#58a6ff"></span>MACD</button>
+  <button class="toggle-btn stoch"      id="m-btn-stoch"onclick="toggleOverlay('stoch')"><span class="dot" style="background:#3fb950"></span>Stoch</button>
+</div>
+
+<!-- Tab bar móvil -->
+<div id="mobile-tabbar">
+  <button class="m-tab" id="m-tab-ind" onclick="toggleMobileInd()" title="Indicadores">
+    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><polyline points="2,14 7,8 11,11 18,4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><line x1="2" y1="17" x2="18" y2="17" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+    Indicadores
+  </button>
+  <button class="m-tab" id="m-tab-sig" onclick="toggleMobileSig()" title="Señales">
+    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.6"/><line x1="10" y1="6" x2="10" y2="11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="13.5" r="0.9" fill="currentColor"/></svg>
+    Señales
+  </button>
+  <button class="m-tab" onclick="_initialLoad=true;loadAll()" title="Actualizar">
+    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 10A7 7 0 1 1 10 3a6.96 6.96 0 0 1 4.95 2.05" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><polyline points="13,1.5 17,2 17,6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Actualizar
+  </button>
+  <button class="m-tab" onclick="openConfig()" title="Umbrales">
+    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M4.22 15.78l1.42-1.42M14.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    Umbrales
+  </button>
+  <button class="m-tab" onclick="openInfo()" title="Info">
+    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.6"/><line x1="10" y1="9" x2="10" y2="14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="6" r="1" fill="currentColor"/></svg>
+    Info
+  </button>
+</div>
+
 <script>
   const CHART_OPTS = (h) => ({
     layout: { background: { color: '#161b22' }, textColor: '#8b949e' },
@@ -916,7 +977,8 @@ Banda inf    = SMA(20) − 2σ</div>
   function toggleOverlay(key) {
     overlayState[key] = !overlayState[key];
     const visible = overlayState[key];
-    document.getElementById('btn-' + key).classList.toggle('active', visible);
+    document.getElementById('btn-' + key)?.classList.toggle('active', visible);
+    document.getElementById('m-btn-' + key)?.classList.toggle('active', visible);
 
     if (key === 'vol') {
       volumeSeries.applyOptions({ visible });
@@ -1483,6 +1545,39 @@ Banda inf    = SMA(20) − 2σ</div>
     );
     _initialLoad = true; // fuerza re-aplicar el rango visible para el nuevo intervalo
     loadAll();
+  }
+
+  // ---- Mobile tab bar ----
+  function toggleMobileInd() {
+    const panel = document.getElementById('mobile-ind-panel');
+    const tab   = document.getElementById('m-tab-ind');
+    const open  = panel.classList.toggle('open');
+    tab.classList.toggle('active', open);
+    // Cerrar señales si estaba abierto
+    document.getElementById('sidebar').classList.add('hidden');
+    document.getElementById('m-tab-sig').classList.remove('active');
+  }
+
+  function toggleMobileSig() {
+    const sb  = document.getElementById('sidebar');
+    const tab = document.getElementById('m-tab-sig');
+    const open = sb.classList.toggle('hidden');
+    tab.classList.toggle('active', !open);
+    // Cerrar indicadores si estaban abiertos
+    document.getElementById('mobile-ind-panel').classList.remove('open');
+    document.getElementById('m-tab-ind').classList.remove('active');
+  }
+
+  // Sincronizar botones del panel móvil con los del desktop
+  function syncMobileButtons() {
+    ['vol','bb','ema','rsi','macd','stoch'].forEach(k => {
+      const desktop = document.getElementById('btn-' + k);
+      const mobile  = document.getElementById('m-btn-' + k);
+      if (desktop && mobile) {
+        mobile.className = desktop.className.replace('btn-', 'm-btn-');
+        mobile.className = desktop.className;
+      }
+    });
   }
 
   // ---- Sidebar toggle ----
