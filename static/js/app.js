@@ -429,6 +429,7 @@
   let selectedId        = null;
   let dragging          = null;
   let dragEndpoint      = null; // { id, point:'p1'|'p2' }
+  let _activeHandle     = null; // { id, point } — endpoint activo visualmente
 
   const DRAW_HINTS = {
     horizontal: 'Clic para colocar línea horizontal',
@@ -477,15 +478,16 @@
   // ---- SVG rendering ----
   function makeLine(x1, y1, x2, y2, color, drawing) {
     const id       = drawing?.id;
-    const selected = id && id === selectedId;
+    const selected  = id && id === selectedId;
+    const draggingLine = dragging && dragging.id === id;
 
     // Visible line
     const vis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     vis.setAttribute('x1',x1); vis.setAttribute('y1',y1);
     vis.setAttribute('x2',x2); vis.setAttribute('y2',y2);
-    vis.setAttribute('stroke', selected ? '#fff' : color);
-    vis.setAttribute('stroke-width', selected ? '2' : '1.5');
-    if (selected) vis.setAttribute('stroke-dasharray','6,3');
+    vis.setAttribute('stroke', draggingLine ? '#58a6ff' : selected ? '#fff' : color);
+    vis.setAttribute('stroke-width', draggingLine ? '2.5' : selected ? '2' : '1.5');
+    if (selected && !draggingLine) vis.setAttribute('stroke-dasharray','6,3');
 
     if (!id) return vis;
 
@@ -547,14 +549,27 @@
   function _makeTrendHandle(cx, cy, drawing, point) {
     const ns       = 'http://www.w3.org/2000/svg';
     const selected = drawing.id === selectedId;
+    const active   = _activeHandle && _activeHandle.id === drawing.id && _activeHandle.point === point;
+    const g = document.createElementNS(ns, 'g');
+
+    if (active) {
+      // Halo exterior amarillo al tocar el endpoint
+      const halo = document.createElementNS(ns, 'circle');
+      halo.setAttribute('cx', cx); halo.setAttribute('cy', cy); halo.setAttribute('r', 18);
+      halo.setAttribute('fill', '#f1c40f44'); halo.setAttribute('stroke', '#f1c40f');
+      halo.setAttribute('stroke-width', '2'); halo.setAttribute('opacity', '0.8');
+      g.appendChild(halo);
+    }
+
     const vis = document.createElementNS(ns, 'circle');
     vis.setAttribute('cx', cx); vis.setAttribute('cy', cy);
-    vis.setAttribute('r', selected ? 10 : 6);
-    vis.setAttribute('fill', selected ? '#fff' : drawing.color);
-    vis.setAttribute('stroke', selected ? drawing.color : '#fff');
+    vis.setAttribute('r', active ? 10 : selected ? 8 : 6);
+    vis.setAttribute('fill', active ? '#f1c40f' : selected ? '#fff' : drawing.color);
+    vis.setAttribute('stroke', active ? '#fff' : selected ? drawing.color : '#fff');
     vis.setAttribute('stroke-width', '2');
     vis.setAttribute('opacity', '0.95');
-    return vis;
+    g.appendChild(vis);
+    return g;
   }
 
   // ---- Detección de endpoints por proximidad (touch móvil) ----
@@ -592,8 +607,9 @@
 
     e.preventDefault();
     e.stopPropagation();
-    selectedId   = hit.drawing.id;
-    dragEndpoint = { id: hit.drawing.id, point: hit.point };
+    selectedId    = hit.drawing.id;
+    dragEndpoint  = { id: hit.drawing.id, point: hit.point };
+    _activeHandle = { id: hit.drawing.id, point: hit.point }; // highlight amarillo
     priceChart.applyOptions({ handleScroll: false, handleScale: false });
     redrawLines();
 
@@ -609,6 +625,7 @@
       }
     }
     function onEnd() {
+      _activeHandle = null; // quitar highlight amarillo
       priceChart.applyOptions({ handleScroll: true, handleScale: true });
       onDragEnd();
       document.removeEventListener('touchmove', onMove);
