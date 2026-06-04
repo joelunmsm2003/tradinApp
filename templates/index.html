@@ -315,7 +315,7 @@
   <div style="display:flex;align-items:center;gap:10px;">
     <span id="price-badge">—</span>
     <span id="last-update">Cargando...</span>
-    <button class="btn" onclick="loadAll()" title="Actualizar" style="padding:7px 10px;">
+    <button class="btn" onclick="_initialLoad=true;loadAll()" title="Actualizar" style="padding:7px 10px;">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5a5.48 5.48 0 0 1 3.89 1.61" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><polyline points="10.5,1.5 13.5,1.5 13.5,4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <button class="btn" onclick="openConfig()" title="Umbrales / Configuración" style="padding:7px 10px;">
