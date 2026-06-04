@@ -1613,18 +1613,19 @@ Banda inf    = SMA(20) − 2σ</div>
       '.chart-card h2, .legend, .iv-bar, #draw-toolbar, .resize-handle, #card-rsi, #card-macd, #card-stoch, #history-section'
     ).forEach(el => el.style.display = 'none');
 
-    // Forzar card-price a ocupar todo el ancho antes de renderizar el chart
+    // Quitar bordes del card para que ocupe toda la pantalla
     const card = document.getElementById('card-price');
-    const wrap = document.getElementById('chart-price');
-    card.style.border = 'none';
-    card.style.borderRadius = '0';
+    card.style.cssText += ';border:none;border-radius:0;background:transparent;';
 
-    // Recalcular ancho del chart tras ocultar elementos
-    requestAnimationFrame(() => {
-      const w = wrap.clientWidth || window.innerWidth;
-      const h = PRICE_H();
-      priceChart.applyOptions({ width: w, height: h });
-    });
+    // Forzar ancho usando window.innerWidth (clientWidth puede ser 0 en este punto)
+    const mobileW = window.innerWidth;
+    const mobileH = window.innerHeight - 120;
+    priceChart.applyOptions({ width: mobileW, height: mobileH });
+
+    // Segunda pasada tras layout completo
+    setTimeout(() => {
+      priceChart.applyOptions({ width: window.innerWidth, height: window.innerHeight - 120 });
+    }, 50);
   }
 </script>
 </body>
