@@ -99,7 +99,7 @@
       .legend { display: none !important; }
       .chart-card h2 { display: none !important; }
       .iv-bar { display: none !important; }
-      #draw-toolbar { display: none !important; }
+      #draw-toolbar { display: none; } /* se muestra via toggleMobileDraw */
       #card-rsi, #card-macd, #card-stoch { display: none !important; }
       #history-section { display: none !important; }
       main { padding: 4px 6px 70px; gap: 6px; }
@@ -588,6 +588,16 @@ Banda inf    = SMA(20) − 2σ</div>
         <div id="chart-overlay" style="position:absolute;inset:0;z-index:10;display:none;cursor:crosshair;"></div>
       </div>
       <div class="resize-handle" data-chart="chart-price"></div>
+      <!-- Botón actualizar flotante sobre la gráfica (solo móvil) -->
+      <button id="mobile-refresh-btn" onclick="_initialLoad=true;loadAll()" title="Actualizar"
+        style="display:none;position:absolute;top:8px;right:8px;z-index:20;
+               background:#21262dcc;border:1px solid #30363d;border-radius:8px;
+               color:#8b949e;padding:6px;cursor:pointer;backdrop-filter:blur(4px);">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17 10A7 7 0 1 1 10 3a6.96 6.96 0 0 1 4.95 2.05" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <polyline points="13,1.5 17,2 17,6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
 
     <div class="chart-card" id="card-rsi">
@@ -681,9 +691,9 @@ Banda inf    = SMA(20) − 2σ</div>
     <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.6"/><line x1="10" y1="6" x2="10" y2="11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="13.5" r="0.9" fill="currentColor"/></svg>
     Señales
   </button>
-  <button class="m-tab" onclick="_initialLoad=true;loadAll()" title="Actualizar">
-    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17 10A7 7 0 1 1 10 3a6.96 6.96 0 0 1 4.95 2.05" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><polyline points="13,1.5 17,2 17,6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    Actualizar
+  <button class="m-tab" id="m-tab-draw" onclick="toggleMobileDraw()" title="Dibujo">
+    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 3l3 3L7 16l-4 1 1-4L14 3z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Dibujo
   </button>
   <button class="m-tab" onclick="openConfig()" title="Umbrales">
     <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.6"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M4.22 15.78l1.42-1.42M14.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -1565,6 +1575,17 @@ Banda inf    = SMA(20) − 2σ</div>
   }
 
   // ---- Mobile tab bar ----
+  function toggleMobileDraw() {
+    const tab = document.getElementById('m-tab-draw');
+    toggleDrawToolbar();
+    const isOpen = document.getElementById('draw-toolbar').classList.contains('open');
+    tab.classList.toggle('active', isOpen);
+    // Mostrar draw-toolbar en móvil si está abierto
+    if (isOpen) {
+      document.getElementById('draw-toolbar').style.display = 'flex';
+    }
+  }
+
   function toggleMobileInd() {
     const panel = document.getElementById('mobile-ind-panel');
     const tab   = document.getElementById('m-tab-ind');
@@ -1629,6 +1650,8 @@ Banda inf    = SMA(20) − 2σ</div>
     // Quitar bordes del card para que ocupe toda la pantalla
     const card = document.getElementById('card-price');
     card.style.cssText += ';border:none;border-radius:0;background:transparent;';
+    // Mostrar botón refresh flotante
+    document.getElementById('mobile-refresh-btn').style.display = 'block';
 
     // Forzar ancho usando window.innerWidth (clientWidth puede ser 0 en este punto)
     const mobileW = window.innerWidth;
