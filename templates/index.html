@@ -1084,21 +1084,27 @@ Banda inf    = SMA(20) − 2σ</div>
     g.addEventListener('mouseenter', () => { if(!dragging) vis.setAttribute('stroke-width','2.5'); });
     g.addEventListener('mouseleave', () => { if(!dragging) vis.setAttribute('stroke-width', selected?'2':'1.5'); });
 
-    g.addEventListener('mousedown', e => {
-      e.stopPropagation(); e.preventDefault();
+    function startLineDrag(clientX, clientY) {
       selectedId = id;
       redrawLines();
       if (drawingMode === 'delete') { deleteDrawing(id); return; }
-      // Start drag
       const rect = svgEl.getBoundingClientRect();
       dragging = {
         id, drawing: JSON.parse(JSON.stringify(drawing)),
-        startX: e.clientX - rect.left,
-        startY: e.clientY - rect.top,
+        startX: clientX - rect.left,
+        startY: clientY - rect.top,
       };
       document.body.style.cursor = 'move';
       document.body.style.userSelect = 'none';
+    }
+    g.addEventListener('mousedown', e => {
+      e.stopPropagation(); e.preventDefault();
+      startLineDrag(e.clientX, e.clientY);
     });
+    g.addEventListener('touchstart', e => {
+      e.stopPropagation(); e.preventDefault();
+      startLineDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
 
     return g;
   }
@@ -1112,14 +1118,16 @@ Banda inf    = SMA(20) − 2σ</div>
     c.setAttribute('opacity', '0.9');
     c.style.cursor = 'crosshair';
     c.style.pointerEvents = 'all';
-    c.addEventListener('mousedown', e => {
+    function startEndpointDrag(e) {
       e.stopPropagation(); e.preventDefault();
       selectedId   = drawing.id;
       dragEndpoint = { id: drawing.id, point };
       document.body.style.cursor     = 'crosshair';
       document.body.style.userSelect = 'none';
       redrawLines();
-    });
+    }
+    c.addEventListener('mousedown', startEndpointDrag);
+    c.addEventListener('touchstart', startEndpointDrag, { passive: false });
     return c;
   }
 
@@ -1230,13 +1238,12 @@ Banda inf    = SMA(20) − 2σ</div>
   // Touch (móvil)
   document.addEventListener('touchmove', _scheduleRedraw, { passive: true });
 
-  // ---- Drag handlers ----
-  document.addEventListener('mousemove', e => {
-    // Drag de un extremo de línea de tendencia
+  // ---- Drag handlers (mouse + touch) ----
+  function onDragMove(clientX, clientY) {
     if (dragEndpoint) {
       const rect = svgEl.getBoundingClientRect();
-      const curX = e.clientX - rect.left;
-      const curY = e.clientY - rect.top;
+      const curX = clientX - rect.left;
+      const curY = clientY - rect.top;
       const newTime  = priceChart.timeScale().coordinateToTime(curX);
       const newPrice = candleSeries.coordinateToPrice(curY);
       const idx = savedDrawings.findIndex(s => s.id === dragEndpoint.id);
@@ -1247,17 +1254,16 @@ Banda inf    = SMA(20) − 2σ</div>
       return;
     }
     if (!dragging) return;
-    const rect  = svgEl.getBoundingClientRect();
-    const curX  = e.clientX - rect.left;
-    const curY  = e.clientY - rect.top;
-    const dx    = curX - dragging.startX;
-    const dy    = curY - dragging.startY;
-    const d     = dragging.drawing;
-    const idx   = savedDrawings.findIndex(s => s.id === dragging.id);
+    const rect = svgEl.getBoundingClientRect();
+    const curX = clientX - rect.left;
+    const curY = clientY - rect.top;
+    const dx   = curX - dragging.startX;
+    const dy   = curY - dragging.startY;
+    const d    = dragging.drawing;
+    const idx  = savedDrawings.findIndex(s => s.id === dragging.id);
     if (idx === -1) return;
-
     if (d.type === 'horizontal') {
-      const origY  = candleSeries.priceToCoordinate(d.price);
+      const origY = candleSeries.priceToCoordinate(d.price);
       if (origY == null) return;
       const newPrice = candleSeries.coordinateToPrice(origY + dy);
       if (newPrice != null) savedDrawings[idx].price = parseFloat(newPrice.toFixed(2));
@@ -1282,41 +1288,40 @@ Banda inf    = SMA(20) − 2σ</div>
       }
     }
     redrawLines();
-  });
+  }
 
-  document.addEventListener('mouseup', async e => {
-    // Guardar extremo de tendencia al soltar
+  async function onDragEnd() {
     if (dragEndpoint) {
       const id  = dragEndpoint.id;
       const idx = savedDrawings.findIndex(s => s.id === id);
       dragEndpoint = null;
-      document.body.style.cursor     = '';
-      document.body.style.userSelect = '';
+      document.body.style.cursor = ''; document.body.style.userSelect = '';
       if (idx !== -1) {
         const { type, p1, p2, color } = savedDrawings[idx];
-        await fetch(`/api/drawings/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ type, p1, p2, color }),
-        });
+        await fetch(`/api/drawings/${id}`, { method:'PATCH', body:JSON.stringify({ type, p1, p2, color }) });
       }
-      redrawLines();
-      return;
+      redrawLines(); return;
     }
     if (!dragging) return;
     const id  = dragging.id;
     const idx = savedDrawings.findIndex(s => s.id === id);
     dragging  = null;
-    document.body.style.cursor     = '';
-    document.body.style.userSelect = '';
+    document.body.style.cursor = ''; document.body.style.userSelect = '';
     if (idx !== -1) {
       const { type, price, time, p1, p2, color } = savedDrawings[idx];
-      await fetch(`/api/drawings/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ type, price, time, p1, p2, color }),
-      });
+      await fetch(`/api/drawings/${id}`, { method:'PATCH', body:JSON.stringify({ type, price, time, p1, p2, color }) });
     }
     redrawLines();
-  });
+  }
+
+  document.addEventListener('mousemove', e => onDragMove(e.clientX, e.clientY));
+  document.addEventListener('mouseup',   () => onDragEnd());
+  document.addEventListener('touchmove', e => {
+    if (!dragging && !dragEndpoint) return;
+    e.preventDefault();
+    onDragMove(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: false });
+  document.addEventListener('touchend', () => onDragEnd());
 
   // ---- Delete key ----
   document.addEventListener('keydown', e => {
