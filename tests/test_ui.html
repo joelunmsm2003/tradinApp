@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Tests UI — lápiz · maximizar · salir</title>
+  <style>
+    body { font-family: monospace; background: #0d1117; color: #e6edf3; padding: 24px; margin: 0; }
+    h1   { color: #58a6ff; margin-bottom: 20px; }
+    .suite { margin-bottom: 28px; }
+    .suite h2 { color: #8b949e; font-size: 0.9rem; border-bottom: 1px solid #21262d; padding-bottom: 4px; margin-bottom: 10px; }
+    .result { padding: 6px 10px; border-radius: 6px; margin: 4px 0; font-size: 0.85rem; }
+    .pass   { background: #1a3a20; color: #3fb950; }
+    .fail   { background: #3a1a1a; color: #da3633; }
+    #summary { margin-top: 20px; font-weight: bold; font-size: 1rem; }
+    /* Mock styles necesarios para las funciones bajo test */
+    #draw-toolbar { display: none; align-items: center; }
+    #draw-toolbar.open { display: flex; }
+    .draw-btn.active  { background: #1a3a20; border-color: #3fb950; color: #3fb950; }
+    .draw-btn.del-mode{ background: #3a1a1a; border-color: #da3633; color: #da3633; }
+    .chart-card.maximized { position: fixed; inset: 0; z-index: 200; }
+    /* Hide mock DOM from view */
+    #mock-dom { display: none; }
+  </style>
+</head>
+<body>
+<h1>Tests UI — lápiz · maximizar · salir</h1>
+<div id="output"></div>
+<div id="summary"></div>
+
+<!-- ── Mock DOM ──────────────────────────────────────────────── -->
+<div id="mock-dom">
+  <button id="btn-draw-toggle"></button>
+  <div id="draw-toolbar">
+    <button class="draw-btn" id="db-h"></button>
+    <button class="draw-btn" id="db-v"></button>
+    <button class="draw-btn" id="db-t"></button>
+    <button class="draw-btn" id="db-del"></button>
+  </div>
+  <div id="chart-overlay" style="display:none;"></div>
+  <svg id="drawing-svg" style="pointer-events:none;"></svg>
+  <span id="draw-hint"></span>
+  <input type="color" id="draw-color" value="#f1c40f">
+
+  <div class="chart-card" id="card-price">
+    <button class="max-btn" title="Maximizar">⛶</button>
+  </div>
+  <div class="chart-card" id="card-rsi">
+    <button class="max-btn" title="Maximizar">⛶</button>
+  </div>
+</div>
+
+<!-- ── Funciones bajo test (extraídas de index.html) ─────────── -->
+<script>
+  // ── Estado compartido (igual que index.html) ──
+  let drawingMode       = null;
+  let pendingTrendPoint = null;
+  let savedDrawings     = [];
+  let selectedId        = null;
+
+  const svgEl      = document.getElementById('drawing-svg');
+  const overlayEl  = document.getElementById('chart-overlay');
+  const colorInput = document.getElementById('draw-color');
+  const hintEl     = document.getElementById('draw-hint');
+
+  const DRAW_HINTS = {
+    horizontal: 'Clic para colocar línea horizontal',
+    vertical:   'Clic para colocar línea vertical',
+    trend:      'Clic punto 1 — luego clic punto 2',
+    delete:     'Clic sobre una línea para borrarla',
+  };
+
+  // ── Mock de chartMap (solo necesitamos applyOptions) ──
+  const mockChart = { height: 0, applyOptions(o) { this.height = o.height ?? this.height; } };
+  const chartMap = {
+    'chart-price': mockChart,
+    'chart-rsi':   { ...mockChart },
+  };
+
+  function redrawLines() { /* no-op en tests */ }
+
+  // ── Copia exacta de toggleDrawToolbar + saveAndExitDraw (del plan) ──
+  function toggleDrawToolbar() {
+    const tb = document.getElementById('draw-toolbar');
+    const isOpen = tb.classList.contains('open');
+    if (isOpen && drawingMode) {
+      if (!confirm('¿Salir del modo de dibujo? Los trazos ya guardados se conservan.')) return;
+    }
+    tb.classList.toggle('open');
+    document.getElementById('btn-draw-toggle').style.color = tb.classList.contains('open') ? '#f0883e' : '';
+    if (!tb.classList.contains('open')) setDrawMode(null);
+  }
+
+  function saveAndExitDraw() {
+    setDrawMode(null);
+    toggleDrawToolbar();
+  }
+
+  // ── Copia exacta de setDrawMode ──
+  function setDrawMode(mode) {
+    drawingMode = drawingMode === mode ? null : mode;
+    pendingTrendPoint = null;
+    ['h','v','t','del'].forEach(k => document.getElementById('db-'+k)?.classList.remove('active','del-mode'));
+    const map = { horizontal:'db-h', vertical:'db-v', trend:'db-t', delete:'db-del' };
+    if (drawingMode && map[drawingMode]) {
+      const btn = document.getElementById(map[drawingMode]);
+      btn.classList.add(drawingMode === 'delete' ? 'del-mode' : 'active');
+    }
+    overlayEl.style.display   = drawingMode ? 'block' : 'none';
+    svgEl.style.pointerEvents = drawingMode === 'delete' ? 'all' : 'none';
+    hintEl.textContent        = drawingMode ? DRAW_HINTS[drawingMode] : '';
+    overlayEl.style.cursor    = drawingMode === 'delete' ? 'default' : 'crosshair';
+    redrawLines();
+  }
+
+  // ── Copia exacta de toggleMax ──
+  function toggleMax(cardId, chartId, normalH) {
+    const card  = document.getElementById(cardId);
+    const chart = chartMap[chartId];
+    const btn   = card.querySelector('.max-btn[title="Maximizar"]') || card.querySelector('.max-btn');
+    const isMax = card.classList.toggle('maximized');
+
+    if (isMax) {
+      btn.textContent = '✕';
+      btn.title = 'Restaurar';
+      document.body.style.overflow = 'hidden';
+      chart.applyOptions({ height: window.innerHeight - 80 });
+      document._maxEsc = e => { if (e.key === 'Escape' && !drawingMode && !selectedId) toggleMax(cardId, chartId, normalH); };
+      document.addEventListener('keydown', document._maxEsc);
+    } else {
+      btn.textContent = '⛶';
+      btn.title = 'Maximizar';
+      document.body.style.overflow = '';
+      chart.applyOptions({ height: normalH });
+      if (document._maxEsc) document.removeEventListener('keydown', document._maxEsc);
+    }
+  }
+</script>
+
+<!-- ── Runner de tests ───────────────────────────────────────── -->
+<script>
+  let passed = 0, failed = 0;
+  const out = document.getElementById('output');
+
+  function assert(condition, msg) {
+    const div = document.createElement('div');
+    div.className = 'result ' + (condition ? 'pass' : 'fail');
+    div.textContent = (condition ? '✓ PASS' : '✗ FAIL') + '  ' + msg;
+    out.appendChild(div);
+    condition ? passed++ : failed++;
+  }
+
+  function suite(name) {
+    const h2 = document.createElement('h2');
+    h2.textContent = name;
+    const s = document.createElement('div');
+    s.className = 'suite';
+    s.appendChild(h2);
+    out.appendChild(s);
+    // redirige assert al suite activo
+    return { el: s };
+  }
+
+  function reset() {
+    // Limpia estado entre tests
+    drawingMode = null;
+    pendingTrendPoint = null;
+    selectedId = null;
+    document.getElementById('draw-toolbar').classList.remove('open');
+    document.getElementById('btn-draw-toggle').style.color = '';
+    overlayEl.style.display = 'none';
+    ['h','v','t','del'].forEach(k => document.getElementById('db-'+k).classList.remove('active','del-mode'));
+    document.getElementById('card-price').classList.remove('maximized');
+    document.getElementById('card-rsi').classList.remove('maximized');
+    const priceBtn = document.querySelector('#card-price .max-btn');
+    priceBtn.textContent = '⛶'; priceBtn.title = 'Maximizar';
+    document.body.style.overflow = '';
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  //  Suite 1: Icono lápiz — toggleDrawToolbar
+  // ─────────────────────────────────────────────────────────────
+  suite('Icono lápiz — toggleDrawToolbar');
+
+  // T1: abrir toolbar
+  reset();
+  toggleDrawToolbar();
+  assert(document.getElementById('draw-toolbar').classList.contains('open'), 'T1: toolbar gana clase "open" al primer clic');
+
+  // T2: color del botón lápiz al abrir
+  assert(document.getElementById('btn-draw-toggle').style.color === 'rgb(240, 136, 62)',
+    'T2: botón lápiz toma color naranja al abrir (rgb(240,136,62) = #f0883e)');
+
+  // T3: cerrar toolbar sin drawingMode activo → no pide confirm (no hay modo activo)
+  reset();
+  toggleDrawToolbar(); // abre
+  // drawingMode sigue null → al volver a llamar debe cerrar sin interrupciones
+  toggleDrawToolbar(); // cierra
+  assert(!document.getElementById('draw-toolbar').classList.contains('open'), 'T3: toolbar cierra sin confirm cuando drawingMode es null');
+
+  // T4: color del botón vuelve a vacío al cerrar
+  assert(document.getElementById('btn-draw-toggle').style.color === '', 'T4: botón lápiz pierde color al cerrar toolbar');
+
+  // ─────────────────────────────────────────────────────────────
+  //  Suite 2: setDrawMode — activación de herramientas
+  // ─────────────────────────────────────────────────────────────
+  suite('Herramientas de dibujo — setDrawMode');
+
+  // T5: activar modo horizontal
+  reset();
+  toggleDrawToolbar(); // abre toolbar
+  setDrawMode('horizontal');
+  assert(drawingMode === 'horizontal', 'T5a: drawingMode queda en "horizontal"');
+  assert(document.getElementById('db-h').classList.contains('active'), 'T5b: botón H gana clase "active"');
+  assert(overlayEl.style.display === 'block', 'T5c: overlay se muestra al activar modo');
+
+  // T6: desactivar modo (llamar con mismo mode lo apaga)
+  setDrawMode('horizontal');
+  assert(drawingMode === null, 'T6a: drawingMode vuelve a null al llamar con el mismo modo');
+  assert(!document.getElementById('db-h').classList.contains('active'), 'T6b: botón H pierde clase "active"');
+  assert(overlayEl.style.display === 'none', 'T6c: overlay se oculta al desactivar modo');
+
+  // T7: modo delete usa clase del-mode en lugar de active
+  reset();
+  toggleDrawToolbar();
+  setDrawMode('delete');
+  assert(document.getElementById('db-del').classList.contains('del-mode'), 'T7: botón Borrar gana clase "del-mode" (no "active")');
+
+  // ─────────────────────────────────────────────────────────────
+  //  Suite 3: Icono maximizar / minimizar — toggleMax
+  // ─────────────────────────────────────────────────────────────
+  suite('Icono maximizar / minimizar — toggleMax');
+
+  // T8: maximizar card-price
+  reset();
+  toggleMax('card-price', 'chart-price', 380);
+  const cardPrice = document.getElementById('card-price');
+  const maxBtn    = cardPrice.querySelector('.max-btn');
+  assert(cardPrice.classList.contains('maximized'), 'T8a: card-price gana clase "maximized"');
+  assert(maxBtn.textContent === '✕',                'T8b: botón muestra ✕ al maximizar');
+  assert(maxBtn.title === 'Restaurar',              'T8c: title del botón cambia a "Restaurar"');
+  assert(document.body.style.overflow === 'hidden', 'T8d: body.overflow es "hidden" al maximizar');
+
+  // T9: restaurar (segunda llamada = toggle off)
+  toggleMax('card-price', 'chart-price', 380);
+  assert(!cardPrice.classList.contains('maximized'), 'T9a: card-price pierde clase "maximized" al restaurar');
+  assert(maxBtn.textContent === '⛶',                'T9b: botón vuelve a ⛶');
+  assert(maxBtn.title === 'Maximizar',               'T9c: title vuelve a "Maximizar"');
+  assert(document.body.style.overflow === '',        'T9d: body.overflow se restaura a ""');
+
+  // ─────────────────────────────────────────────────────────────
+  //  Suite 4: saveAndExitDraw — botón Guardar y salir
+  // ─────────────────────────────────────────────────────────────
+  suite('Guardar y salir — saveAndExitDraw');
+
+  // T10: saveAndExitDraw cierra toolbar y limpia drawingMode sin confirm
+  reset();
+  // Simular confirm para asegurarnos de que NO se llama
+  let confirmCalled = false;
+  const originalConfirm = window.confirm;
+  window.confirm = (...args) => { confirmCalled = true; return true; };
+
+  toggleDrawToolbar();        // abre
+  setDrawMode('vertical');    // activa un modo
+  saveAndExitDraw();          // debe cerrar sin pedir confirm
+
+  window.confirm = originalConfirm; // restaurar
+
+  assert(!confirmCalled,
+    'T10a: saveAndExitDraw no invoca confirm (cierre limpio)');
+  assert(!document.getElementById('draw-toolbar').classList.contains('open'),
+    'T10b: toolbar queda cerrado tras saveAndExitDraw');
+  assert(drawingMode === null,
+    'T10c: drawingMode queda en null tras saveAndExitDraw');
+
+  // T11: toggleDrawToolbar SÍ pide confirm cuando drawingMode está activo
+  reset();
+  let confirmCalledOnClose = false;
+  window.confirm = (...args) => { confirmCalledOnClose = true; return true; };
+
+  toggleDrawToolbar();       // abre
+  setDrawMode('trend');      // activa modo
+  toggleDrawToolbar();       // intento de cerrar con modo activo
+
+  window.confirm = originalConfirm;
+
+  assert(confirmCalledOnClose,
+    'T11: toggleDrawToolbar llama a confirm al cerrar con drawingMode activo');
+
+  // ─────────────────────────────────────────────────────────────
+  //  Resumen
+  // ─────────────────────────────────────────────────────────────
+  const total = passed + failed;
+  const sumEl = document.getElementById('summary');
+  sumEl.style.color = failed === 0 ? '#3fb950' : '#da3633';
+  sumEl.textContent = `Resultado: ${passed}/${total} tests pasaron${failed > 0 ? ' — ' + failed + ' fallo(s)' : ' ✓'}`;
+</script>
+</body>
+</html>
