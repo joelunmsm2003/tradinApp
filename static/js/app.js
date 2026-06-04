@@ -334,6 +334,7 @@
 
   // ---- Config modal ----
   async function openConfig() {
+    if (window.innerWidth <= 768) _closeAllMobilePanels('cfg');
     const res = await fetch('/api/config');
     const cfg = await res.json();
     for (const [k, v] of Object.entries(cfg)) {
@@ -347,10 +348,10 @@
   function closeConfig() { document.getElementById('cfg-overlay').classList.remove('open'); }
 
   function openInfo() {
+    if (window.innerWidth <= 768) _closeAllMobilePanels('info');
     const ov = document.getElementById('info-overlay');
     ov.classList.add('open');
     if (window.innerWidth <= 768) {
-      // En móvil: sin fondo oscuro — es un panel tab
       ov.style.background = 'transparent';
       ov.style.backdropFilter = 'none';
       ov.style.pointerEvents = 'none';
@@ -945,36 +946,74 @@
   }
 
   // ---- Mobile tab bar ----
+  // Cierra todos los paneles móviles excepto el indicado
+  function _closeAllMobilePanels(except) {
+    if (except !== 'ind') {
+      document.getElementById('mobile-ind-panel').classList.remove('open');
+      document.getElementById('m-tab-ind').classList.remove('active');
+    }
+    if (except !== 'sig') {
+      document.getElementById('sidebar').classList.add('hidden');
+      document.getElementById('m-tab-sig').classList.remove('active');
+    }
+    if (except !== 'draw') {
+      const tb = document.getElementById('draw-toolbar');
+      tb.classList.remove('open');
+      tb.style.display = 'none';
+      document.getElementById('m-tab-draw').classList.remove('active');
+      setDrawMode(null);
+    }
+    if (except !== 'info') {
+      document.getElementById('info-overlay').classList.remove('open');
+    }
+    if (except !== 'cfg') {
+      document.getElementById('cfg-overlay').classList.remove('open');
+    }
+  }
+
   function toggleMobileDraw() {
     const tab = document.getElementById('m-tab-draw');
     const tb  = document.getElementById('draw-toolbar');
-    // Limpiar inline style del init móvil antes del toggle
-    tb.style.display = '';
-    toggleDrawToolbar();
     const isOpen = tb.classList.contains('open');
-    // Forzar display porque el init móvil pone style.display='none'
-    tb.style.display = isOpen ? 'flex' : 'none';
-    tab.classList.toggle('active', isOpen);
+    if (!isOpen) {
+      _closeAllMobilePanels('draw');
+      tb.style.display = 'flex';
+      tb.classList.add('open');
+      tab.classList.add('active');
+    } else {
+      tb.classList.remove('open');
+      tb.style.display = 'none';
+      tab.classList.remove('active');
+      setDrawMode(null);
+    }
   }
 
   function toggleMobileInd() {
-    const panel = document.getElementById('mobile-ind-panel');
-    const tab   = document.getElementById('m-tab-ind');
-    const open  = panel.classList.toggle('open');
-    tab.classList.toggle('active', open);
-    // Cerrar señales si estaba abierto
-    document.getElementById('sidebar').classList.add('hidden');
-    document.getElementById('m-tab-sig').classList.remove('active');
+    const panel  = document.getElementById('mobile-ind-panel');
+    const tab    = document.getElementById('m-tab-ind');
+    const isOpen = panel.classList.contains('open');
+    if (!isOpen) {
+      _closeAllMobilePanels('ind');
+      panel.classList.add('open');
+      tab.classList.add('active');
+    } else {
+      panel.classList.remove('open');
+      tab.classList.remove('active');
+    }
   }
 
   function toggleMobileSig() {
-    const sb  = document.getElementById('sidebar');
-    const tab = document.getElementById('m-tab-sig');
-    const open = sb.classList.toggle('hidden');
-    tab.classList.toggle('active', !open);
-    // Cerrar indicadores si estaban abiertos
-    document.getElementById('mobile-ind-panel').classList.remove('open');
-    document.getElementById('m-tab-ind').classList.remove('active');
+    const sb     = document.getElementById('sidebar');
+    const tab    = document.getElementById('m-tab-sig');
+    const isOpen = !sb.classList.contains('hidden');
+    if (!isOpen) {
+      _closeAllMobilePanels('sig');
+      sb.classList.remove('hidden');
+      tab.classList.add('active');
+    } else {
+      sb.classList.add('hidden');
+      tab.classList.remove('active');
+    }
   }
 
   // Sincronizar botones del panel móvil con los del desktop
