@@ -560,7 +560,7 @@
   // ---- Detección de endpoints por proximidad (touch móvil) ----
   // Se engancha en el contenedor del chart — no depende de pointer-events del SVG
   const _chartContainer = document.querySelector('#chart-price').parentElement;
-  const HANDLE_THRESHOLD = 36; // px de radio de detección
+  const HANDLE_THRESHOLD = 50; // px de radio de detección
 
   function _findNearestEndpoint(tx, ty) {
     for (const d of savedDrawings) {
