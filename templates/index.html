@@ -871,22 +871,28 @@ Banda inf    = SMA(20) − 2σ</div>
   const BASE_CHART_H      = () => PRICE_H();
 
   function recomputeOverlayMargins() {
-    const active = ['rsi', 'macd', 'stoch'].filter(k => overlayState[k]);
-    const count  = active.length;
+    const active   = ['rsi', 'macd', 'stoch'].filter(k => overlayState[k]);
+    const count    = active.length;
+    const isMobile = window.innerWidth < 768;
 
-    // Altura total del chart: crece según cuántos overlays haya
-    const totalH = count > 0
-      ? CANDLE_MIN_H + count * OVERLAY_PANE_PX + count * OVERLAY_GAP_PX
-      : BASE_CHART_H();
+    // Móvil: altura fija (pantalla completa), overlays dentro del mismo espacio
+    // Escritorio: el chart crece para acomodar los overlays
+    const totalH = isMobile
+      ? PRICE_H()
+      : count > 0
+        ? CANDLE_MIN_H + count * OVERLAY_PANE_PX + count * OVERLAY_GAP_PX
+        : BASE_CHART_H();
+
     const el = document.getElementById('chart-price');
     priceChart.applyOptions({ height: totalH, width: el.clientWidth });
 
-    // Fracciones en base a la nueva altura total
-    const overlayTotal = count * OVERLAY_PANE_PX + count * OVERLAY_GAP_PX;
-    const candleFrac   = CANDLE_MIN_H / totalH;
-    const paneFrac     = OVERLAY_PANE_PX / totalH;
-    const gapFrac      = OVERLAY_GAP_PX / totalH;
-    const SLOT         = paneFrac + gapFrac;
+    // En móvil cada overlay ocupa 18% del alto; en escritorio px fijos
+    const paneFrac   = isMobile ? 0.18 : OVERLAY_PANE_PX / totalH;
+    const gapFrac    = isMobile ? 0.02 : OVERLAY_GAP_PX  / totalH;
+    const candleFrac = isMobile
+      ? Math.max(0.3, 1 - count * (paneFrac + gapFrac))
+      : CANDLE_MIN_H / totalH;
+    const SLOT = paneFrac + gapFrac;
 
     priceChart.priceScale('right').applyOptions({
       scaleMargins: { top: 0.02, bottom: count > 0 ? 1 - candleFrac + 0.02 : 0.02 },
