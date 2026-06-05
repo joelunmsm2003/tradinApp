@@ -146,19 +146,7 @@
     emaSlowSeries.setData(data.ema_slow);
     volumeSeries.setData(data.volume);
     if (_initialLoad) {
-      const now  = Math.floor(Date.now() / 1000);
-      const ivr  = IV_RANGE[currentInterval] || IV_RANGE['1d'];
-      const from = now - ivr.histDays * 24 * 3600;
-      const to   = now + ivr.padDays  * 24 * 3600;
-      const margin = Math.round(ivr.histDays * 0.2);
-      priceChart.timeScale().setVisibleRange({
-        from: from - margin * 24 * 3600,
-        to:   to   + margin * 24 * 3600,
-      });
-      priceChart.priceScale('right').applyOptions({
-        autoScale: true,
-        scaleMargins: { top: 0.2, bottom: 0.2 },
-      });
+      _fitChart();
       _initialLoad = false;
     }
 
@@ -993,6 +981,20 @@
     '1wk': { histDays: 90, padDays: 10 },
   };
 
+  function _fitChart() {
+    const now    = Math.floor(Date.now() / 1000);
+    const ivr    = IV_RANGE[currentInterval] || IV_RANGE['1d'];
+    const margin = Math.round(ivr.histDays * 0.2);
+    priceChart.timeScale().setVisibleRange({
+      from: now - (ivr.histDays + margin) * 24 * 3600,
+      to:   now + (ivr.padDays  + margin) * 24 * 3600,
+    });
+    priceChart.priceScale('right').applyOptions({
+      autoScale: true,
+      scaleMargins: { top: 0.2, bottom: 0.2 },
+    });
+  }
+
   function setTimeframe(iv) {
     if (iv === currentInterval) return;
     currentInterval = iv;
@@ -1004,6 +1006,7 @@
     chartEl.style.opacity = '0';
     _initialLoad = true;
     loadAll().then(() => {
+      _fitChart();
       chartEl.style.opacity = '1';
     });
   }
