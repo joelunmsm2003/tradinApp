@@ -980,9 +980,9 @@
 
   // Rango inicial visible por intervalo (días de historia + días vacíos a la derecha)
   const IV_RANGE = {
-    '1d':  { histDays: 365, padDays: 122 },
-    '4h':  { histDays: 180, padDays:  60 },
-    '1wk': { histDays: 365 * 4, padDays: 180 },
+    '1d':  { histDays: 365, padDays: 30 },
+    '4h':  { histDays: 365, padDays: 30 },
+    '1wk': { histDays: 365, padDays: 30 },
   };
 
   function setTimeframe(iv) {
