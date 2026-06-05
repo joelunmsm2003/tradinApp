@@ -151,6 +151,7 @@
       const from = now - ivr.histDays * 24 * 3600;
       const to   = now + ivr.padDays  * 24 * 3600;
       priceChart.timeScale().setVisibleRange({ from, to });
+      priceChart.priceScale('right').applyOptions({ autoScale: true });
       _initialLoad = false;
     }
 
