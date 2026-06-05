@@ -20,7 +20,7 @@
     const wrap = document.getElementById('chart-price');
     if (wrap) {
       const top = wrap.getBoundingClientRect().top;
-      return Math.max(200, window.innerHeight - top - 20);
+      return Math.max(200, window.innerHeight - top - 78);
     }
     return window.innerHeight - 185;
   };
