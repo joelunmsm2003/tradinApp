@@ -986,12 +986,18 @@
   };
 
   function setTimeframe(iv) {
+    if (iv === currentInterval) return;
     currentInterval = iv;
     document.querySelectorAll('.iv-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.iv === iv)
     );
-    _initialLoad = true; // fuerza re-aplicar el rango visible para el nuevo intervalo
-    loadAll();
+    const chartEl = document.getElementById('chart-price');
+    chartEl.style.transition = 'opacity 0.18s ease';
+    chartEl.style.opacity = '0';
+    _initialLoad = true;
+    loadAll().then(() => {
+      chartEl.style.opacity = '1';
+    });
   }
 
   // ---- Mobile tab bar ----
