@@ -1101,7 +1101,7 @@
   // En móvil: ocultar todo excepto gráfica + tab bar
   if (window.innerWidth <= 768) {
     document.querySelectorAll(
-      '.chart-card h2, .legend, .iv-bar, #draw-toolbar, .resize-handle, #card-rsi, #card-macd, #card-stoch, #history-section'
+      '.chart-card h2, .legend, #draw-toolbar, .resize-handle, #card-rsi, #card-macd, #card-stoch, #history-section'
     ).forEach(el => el.style.display = 'none');
 
     // Quitar bordes del card para que ocupe toda la pantalla
@@ -1112,11 +1112,13 @@
 
     // Forzar ancho usando window.innerWidth (clientWidth puede ser 0 en este punto)
     const mobileW = window.innerWidth;
-    const mobileH = window.innerHeight - 120;
+    const ivBarH = document.querySelector('.iv-bar')?.offsetHeight || 34;
+    const mobileH = window.innerHeight - 120 - ivBarH;
     priceChart.applyOptions({ width: mobileW, height: mobileH });
 
     // Segunda pasada tras layout completo
     setTimeout(() => {
-      priceChart.applyOptions({ width: window.innerWidth, height: window.innerHeight - 120 });
+      const ivH = document.querySelector('.iv-bar')?.offsetHeight || 34;
+      priceChart.applyOptions({ width: window.innerWidth, height: window.innerHeight - 120 - ivH });
     }, 50);
   }
