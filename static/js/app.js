@@ -150,8 +150,15 @@
       const ivr  = IV_RANGE[currentInterval] || IV_RANGE['1d'];
       const from = now - ivr.histDays * 24 * 3600;
       const to   = now + ivr.padDays  * 24 * 3600;
-      priceChart.timeScale().setVisibleRange({ from, to });
-      priceChart.priceScale('right').applyOptions({ autoScale: true });
+      const margin = Math.round(ivr.histDays * 0.2);
+      priceChart.timeScale().setVisibleRange({
+        from: from - margin * 24 * 3600,
+        to:   to   + margin * 24 * 3600,
+      });
+      priceChart.priceScale('right').applyOptions({
+        autoScale: true,
+        scaleMargins: { top: 0.2, bottom: 0.2 },
+      });
       _initialLoad = false;
     }
 
