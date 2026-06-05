@@ -1,5 +1,15 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #0d1117; color: #e6edf3; font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; overflow-x: hidden; }
+    @media (max-width: 768px) and (orientation: landscape) {
+      body::before {
+        content: 'Gira el dispositivo a modo vertical';
+        position: fixed; inset: 0; z-index: 9999;
+        background: #0d1117; color: #e6edf3;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1rem; text-align: center; padding: 20px;
+      }
+      body > * { display: none !important; }
+    }
     /* Números tabulares para precios y datos numéricos */
     .price, #price-badge, .info-table td, .info-pre, .signal-detail,
     #history-table td, .conf-label { font-variant-numeric: tabular-nums; }
