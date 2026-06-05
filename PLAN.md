@@ -25,7 +25,7 @@
 
 ### Charts
 
-- [x] Velas 1D BTC desde 2020, vista filtrada al último año al cargar
+- [x] Velas 1D BTC desde 2020, vista filtrada a los últimos 3 meses al cargar/actualizar
 - [x] Bollinger Bands + EMA rápida/lenta overlay (toggle on/off)
 - [x] Volumen como histograma (verde/rojo) en franja inferior (toggle)
 - [x] Sub-paneles overlay en el chart de precio: RSI, MACD, Stoch (toggle independiente)
@@ -33,6 +33,8 @@
 - [x] Resize handle en cada chart (arrastrar borde inferior)
 - [x] Botón maximizar en cada chart (Escape para cerrar)
 - [x] Crosshair sincronizado entre todos los charts
+- [x] Selector de temporalidad: 1D, 4H, 1W (con fade al cambiar)
+- [x] Umbrales Stochastic RSI (80/20) con mismo estilo que umbrales RSI
 
 ### Herramienta de dibujo (✏)
 
@@ -42,6 +44,7 @@
 - [x] Borrar línea individual o todas
 - [x] Color picker
 - [x] Persistencia en `drawings.json` (sobreviven al recargar)
+- [x] Círculos en endpoints de tendencia solo visibles al seleccionar/editar
 
 ### Semáforos y confluencia
 
@@ -54,6 +57,11 @@
 
 - [x] Sidebar de señales colapsable (botón lateral fijo)
 - [x] Responsive para móvil (< 768px)
+- [x] Barra de tabs inferior en móvil (Indicadores, Señales, Dibujo, Umbrales, Info)
+- [x] Botones 4H/1D/1W visibles en móvil
+- [x] Eje X con fechas visible en móvil (por encima de la tabbar)
+- [x] Panel Info y Umbrales en móvil no cubre la tabbar inferior
+- [x] Guía de indicadores sin header fijo (se cierra tocando fuera)
 - [x] Presets MACD: Estándar (12,26,9), Crypto 1D (8,21,5), EMA 50/200 (50,200,9)
 - [x] Configuración de umbrales persistida en `web_config.json`
 - [x] Historial de alertas con tabla
