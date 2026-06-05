@@ -561,14 +561,16 @@
       g.appendChild(halo);
     }
 
-    const vis = document.createElementNS(ns, 'circle');
-    vis.setAttribute('cx', cx); vis.setAttribute('cy', cy);
-    vis.setAttribute('r', active ? 10 : selected ? 8 : 6);
-    vis.setAttribute('fill', active ? '#f1c40f' : selected ? '#fff' : drawing.color);
-    vis.setAttribute('stroke', active ? '#fff' : selected ? drawing.color : '#fff');
-    vis.setAttribute('stroke-width', '2');
-    vis.setAttribute('opacity', '0.95');
-    g.appendChild(vis);
+    if (selected || active) {
+      const vis = document.createElementNS(ns, 'circle');
+      vis.setAttribute('cx', cx); vis.setAttribute('cy', cy);
+      vis.setAttribute('r', active ? 10 : 8);
+      vis.setAttribute('fill', active ? '#f1c40f' : '#fff');
+      vis.setAttribute('stroke', active ? '#fff' : drawing.color);
+      vis.setAttribute('stroke-width', '2');
+      vis.setAttribute('opacity', '0.95');
+      g.appendChild(vis);
+    }
     return g;
   }
 

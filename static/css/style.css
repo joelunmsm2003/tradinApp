@@ -95,13 +95,16 @@
 
       /* Info y Umbrales como panel full en móvil */
       #info-overlay,
-      #cfg-overlay { align-items: flex-start !important; bottom: 58px !important; }
+      #cfg-overlay {
+        align-items: flex-start !important;
+        top: 0 !important; left: 0 !important; right: 0 !important;
+        bottom: 58px !important;
+      }
       #info-panel,
       #cfg-panel {
         width: 100% !important; max-width: 100% !important;
-        height: calc(100vh - 58px) !important;
-        max-height: calc(100vh - 58px) !important;
-        max-height: none !important;
+        height: 100% !important;
+        max-height: 100% !important;
         border-radius: 0 !important;
         border: none !important;
         margin: 0 !important;
