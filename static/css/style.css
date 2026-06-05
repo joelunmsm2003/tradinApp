@@ -80,7 +80,7 @@
       #sidebar-toggle { display: none !important; }
       .legend { display: none !important; }
       .chart-card h2 { display: none !important; }
-      .iv-bar { display: none !important; }
+      .iv-bar { display: flex !important; }
       #draw-toolbar {
         display: none;
         position: fixed !important; top: 0; left: 0; right: 0;
@@ -95,11 +95,12 @@
 
       /* Info y Umbrales como panel full en móvil */
       #info-overlay,
-      #cfg-overlay { align-items: flex-start !important; }
+      #cfg-overlay { align-items: flex-start !important; bottom: 58px !important; }
       #info-panel,
       #cfg-panel {
         width: 100% !important; max-width: 100% !important;
         height: calc(100vh - 58px) !important;
+        max-height: calc(100vh - 58px) !important;
         max-height: none !important;
         border-radius: 0 !important;
         border: none !important;
