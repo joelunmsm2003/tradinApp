@@ -1,7 +1,7 @@
   const CHART_OPTS = (h) => ({
     layout: { background: { color: '#161b22' }, textColor: '#8b949e' },
     grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
-    timeScale: { borderColor: '#21262d', timeVisible: true, rightOffset: 30 },
+    timeScale: { borderColor: '#21262d', timeVisible: true },
     rightPriceScale: { borderColor: '#21262d' },
     width: 0, height: h,
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
@@ -1006,8 +1006,10 @@
     chartEl.style.opacity = '0';
     _initialLoad = true;
     loadAll().then(() => {
-      _fitChart();
-      chartEl.style.opacity = '1';
+      requestAnimationFrame(() => {
+        _fitChart();
+        chartEl.style.opacity = '1';
+      });
     });
   }
 
