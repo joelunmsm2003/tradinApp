@@ -52,8 +52,8 @@
 
   const overlayStochK  = priceChart.addLineSeries({ priceScaleId:'ov-stoch', color:'#3fb950', lineWidth:1.5, priceLineVisible:false, lastValueVisible:false, visible:false });
   const overlayStochD  = priceChart.addLineSeries({ priceScaleId:'ov-stoch', color:'#f0883e', lineWidth:1, priceLineVisible:false, lastValueVisible:false, visible:false });
-  const overlayStoch80 = priceChart.addLineSeries({ priceScaleId:'ov-stoch', color:'#da363355', lineWidth:1, lineStyle:2, priceLineVisible:false, lastValueVisible:false, visible:false });
-  const overlayStoch20 = priceChart.addLineSeries({ priceScaleId:'ov-stoch', color:'#3fb95055', lineWidth:1, lineStyle:2, priceLineVisible:false, lastValueVisible:false, visible:false });
+  const overlayStoch80 = priceChart.addLineSeries({ priceScaleId:'ov-stoch', color:'#da3633cc', lineWidth:1.5, lineStyle:2, priceLineVisible:false, lastValueVisible:false, visible:false });
+  const overlayStoch20 = priceChart.addLineSeries({ priceScaleId:'ov-stoch', color:'#3fb950cc', lineWidth:1.5, lineStyle:2, priceLineVisible:false, lastValueVisible:false, visible:false });
 
   const rsiChart    = makeChart('chart-rsi', 160);
   const rsiSeries   = rsiChart.addLineSeries({ color:'#f0883e', lineWidth:2, priceLineVisible:false });
@@ -69,8 +69,8 @@
   const stochChart   = makeChart('chart-stoch', 140);
   const stochKSeries = stochChart.addLineSeries({ color:'#3fb950', lineWidth:2, priceLineVisible:false, lastValueVisible:true });
   const stochDSeries = stochChart.addLineSeries({ color:'#f0883e', lineWidth:1.5, priceLineVisible:false, lastValueVisible:true });
-  const stochLine80  = stochChart.addLineSeries({ color:'#da363355', lineWidth:1, lineStyle:2, priceLineVisible:false, lastValueVisible:false });
-  const stochLine20  = stochChart.addLineSeries({ color:'#3fb95055', lineWidth:1, lineStyle:2, priceLineVisible:false, lastValueVisible:false });
+  const stochLine80  = stochChart.addLineSeries({ color:'#da3633cc', lineWidth:1.5, lineStyle:2, priceLineVisible:false, lastValueVisible:true });
+  const stochLine20  = stochChart.addLineSeries({ color:'#3fb950cc', lineWidth:1.5, lineStyle:2, priceLineVisible:false, lastValueVisible:true });
 
   function syncCharts(master, ...slaves) {
     master.timeScale().subscribeVisibleLogicalRangeChange(r => { if(r) slaves.forEach(s => s.timeScale().setVisibleLogicalRange(r)); });
