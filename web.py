@@ -2,6 +2,7 @@ import json
 import os
 import time
 import uuid
+import urllib.request
 
 import pandas as pd
 import yfinance as yf
@@ -413,6 +414,33 @@ def history():
     with open(HISTORY_FILE) as f:
         data = json.load(f)
     return jsonify(list(reversed(data)))
+
+
+_fng_cache: dict = {"data": None, "ts": 0.0}
+_FNG_TTL = 3600  # 1 hora — el índice solo cambia una vez al día
+
+
+@app.route("/api/fng")
+def fear_and_greed():
+    now = time.time()
+    if _fng_cache["data"] is not None and now - _fng_cache["ts"] < _FNG_TTL:
+        return jsonify(_fng_cache["data"])
+    try:
+        with urllib.request.urlopen(
+            "https://api.alternative.me/fng/?limit=7", timeout=5
+        ) as resp:
+            raw = json.loads(resp.read())
+        data = raw.get("data", [])
+        result = {
+            "value":       int(data[0]["value"]),
+            "label":       data[0]["value_classification"],
+            "history":     [{"value": int(d["value"]), "label": d["value_classification"]} for d in data],
+        }
+        _fng_cache["data"] = result
+        _fng_cache["ts"]   = now
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
 
 
 if __name__ == "__main__":

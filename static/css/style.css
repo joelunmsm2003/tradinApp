@@ -220,6 +220,14 @@
     .chart-card.maximized .legend { padding: 4px 14px; }
 
     #signals-panel { display: flex; flex-direction: column; gap: 9px; }
+
+    #fng-card {
+      background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+      padding: 14px;
+    }
+    .fng-dot {
+      width: 10px; height: 10px; border-radius: 50%; cursor: default;
+    }
     #mobile-tabbar { display: none; }
     #mobile-ind-panel { display: none; }
 

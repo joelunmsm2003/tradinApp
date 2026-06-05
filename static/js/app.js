@@ -240,6 +240,48 @@
 
   async function loadAll() { await Promise.all([loadStatus(), loadHistory()]); }
 
+  // ---- Fear & Greed Index ----
+  function _fngColor(v) {
+    if (v <= 24) return '#da3633'; // Extreme Fear
+    if (v <= 44) return '#f0883e'; // Fear
+    if (v <= 55) return '#8b949e'; // Neutral
+    if (v <= 74) return '#3fb950'; // Greed
+    return '#58a6ff';              // Extreme Greed
+  }
+
+  async function loadFng() {
+    try {
+      const res  = await fetch('/api/fng');
+      const data = await res.json();
+      if (data.error) return;
+
+      const v     = data.value;
+      const color = _fngColor(v);
+      const circ  = 2 * Math.PI * 28; // ≈ 175.93
+
+      // Arco proporcional al valor (0-100)
+      const filled = (v / 100) * circ;
+      const arc = document.getElementById('fng-arc');
+      arc.setAttribute('stroke', color);
+      arc.setAttribute('stroke-dasharray', `${filled} ${circ - filled}`);
+      arc.setAttribute('stroke-dashoffset', (circ / 4).toString()); // empieza desde arriba
+
+      document.getElementById('fng-value').textContent = v;
+      const lbl = document.getElementById('fng-label');
+      lbl.textContent = data.label;
+      lbl.style.color = color;
+
+      // Puntos históricos (7 días)
+      const hist = document.getElementById('fng-history');
+      hist.innerHTML = data.history.map(d =>
+        `<div class="fng-dot" style="background:${_fngColor(d.value)};" title="${d.label}: ${d.value}"></div>`
+      ).join('');
+    } catch {}
+  }
+
+  loadFng();
+  setInterval(loadFng, 3600 * 1000); // recargar cada hora
+
   // ---- Sub-pane margin engine ----
   const CANDLE_MIN_H      = 300;  // px mínimos para las velas
   const OVERLAY_PANE_PX   = 120;  // px fijos por cada sub-pane de indicador
