@@ -1,12 +1,16 @@
 // Service Worker básico — necesario para que Chrome habilite "Instalar"
-const CACHE = 'qhapaq-v1';
+const CACHE = 'qhapaq-v2';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(clients.claim());
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => clients.claim())
+  );
 });
 
 // Solo cachea assets estáticos; las llamadas API siempre van a la red

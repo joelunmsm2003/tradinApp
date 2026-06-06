@@ -114,7 +114,7 @@
 
       /* Barra de tabs inferior */
       #mobile-tabbar {
-        display: flex !important;
+        display: flex;
         position: fixed; bottom: 0; left: 0; right: 0; z-index: 350;
         background: #161b22; border-top: 1px solid #30363d;
         height: 58px; align-items: center; justify-content: space-around;
@@ -228,8 +228,10 @@
     .fng-dot {
       width: 10px; height: 10px; border-radius: 50%; cursor: default;
     }
-    #mobile-tabbar { display: none; }
-    #mobile-ind-panel { display: none; }
+    @media (min-width: 769px) {
+      #mobile-tabbar { display: none; }
+      #mobile-ind-panel { display: none; }
+    }
 
     .signal-card {
       background: #161b22; border: 1px solid #21262d; border-radius: 8px;
