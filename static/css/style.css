@@ -189,6 +189,16 @@
     .draw-btn.del-mode { background: #3a1a1a; border-color: #da3633; color: #da3633; }
     #draw-color { width: 28px; height: 28px; padding: 2px; border: 1px solid #30363d; border-radius: 6px; background: #21262d; cursor: pointer; }
     .draw-sep { width: 1px; height: 20px; background: #30363d; margin: 0 2px; }
+    #db-save-exit { background: #1a3a20; border-color: #3fb950; color: #3fb950; }
+    #db-save-exit:hover { background: #238636; color: #fff; }
+    /* Botón flotante ✓ visible sobre el gráfico mientras hay un modo de dibujo activo */
+    #draw-done {
+      display: none; position: absolute; bottom: 14px; right: 14px; z-index: 25;
+      align-items: center; gap: 4px; padding: 8px 16px; border: 0; border-radius: 20px;
+      background: #238636; color: #fff; font-weight: 600; font-size: 0.85rem; font-family: inherit; cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0,0,0,.5);
+    }
+    #draw-done:hover { background: #2ea043; }
 
     /* Maximize */
     .max-btn {

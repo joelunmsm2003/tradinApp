@@ -1,5 +1,5 @@
 // Service Worker básico — necesario para que Chrome habilite "Instalar"
-const CACHE = 'qhapaq-v3';
+const CACHE = 'qhapaq-v4';
 
 self.addEventListener('install', e => {
   self.skipWaiting();

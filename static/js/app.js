@@ -553,21 +553,29 @@
   const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
   const FIB_COLORS = ['#787b86', '#f23645', '#ff9800', '#4caf50', '#089981', '#2962ff', '#7e57c2'];
 
-  function toggleDrawToolbar() {
+  // Cierra la barra y sale de cualquier modo de dibujo (escritorio y móvil).
+  // Los trazos ya guardados se conservan; solo se descarta un punto 1 pendiente.
+  function closeDrawToolbar() {
     const tb = document.getElementById('draw-toolbar');
-    const isOpen = tb.classList.contains('open');
-    if (isOpen && drawingMode) {
-      if (!confirm('¿Salir del modo de dibujo? Los trazos ya guardados se conservan.')) return;
-    }
-    tb.classList.toggle('open');
-    document.getElementById('btn-draw-toggle').style.color = tb.classList.contains('open') ? '#f0883e' : '';
-    if (!tb.classList.contains('open')) setDrawMode(null);
+    tb.classList.remove('open');
+    tb.style.display = '';              // móvil: quitar el display:flex inline puesto por el tab
+    document.getElementById('btn-draw-toggle').style.color = '';
+    document.getElementById('m-tab-draw')?.classList.remove('active');
+    previewMousePos = null;
+    setDrawMode(null);
   }
 
+  function toggleDrawToolbar() {
+    const tb = document.getElementById('draw-toolbar');
+    if (tb.classList.contains('open')) { closeDrawToolbar(); return; }
+    tb.classList.add('open');
+    document.getElementById('btn-draw-toggle').style.color = '#f0883e';
+  }
+
+  // Botón ✓ "Listo": confirma que terminó de dibujar y sale del modo
   function saveAndExitDraw() {
     selectedId = null;
-    setDrawMode(null);
-    toggleDrawToolbar();
+    closeDrawToolbar();
   }
 
   function setDrawMode(mode) {
@@ -585,6 +593,7 @@
     svgEl.style.pointerEvents    = drawingMode === 'delete' ? 'all' : 'none';
     hintEl.textContent        = drawingMode ? DRAW_HINTS[drawingMode] : '';
     overlayEl.style.cursor    = drawingMode === 'delete' ? 'default' : 'crosshair';
+    document.getElementById('draw-done').style.display = drawingMode ? 'flex' : 'none';
     redrawLines();
   }
 
@@ -1034,6 +1043,12 @@
     }
   });
 
+  // Esc / Enter confirman que terminó de dibujar
+  document.addEventListener('keydown', e => {
+    if (!drawingMode) return;
+    if (e.key === 'Escape' || e.key === 'Enter') saveAndExitDraw();
+  });
+
   // ---- Preview de tendencia al mover el mouse ----
   overlayEl.addEventListener('mousemove', e => {
     if (drawingMode !== 'trend' || !pendingTrendPoint) return;
@@ -1087,17 +1102,8 @@
     const saved = await res.json();
     savedDrawings.push(saved);
     // Seleccionar la línea recién creada y salir del modo dibujo (estilo TradingView)
+    closeDrawToolbar();
     selectedId = saved.id;
-    setDrawMode(null);
-    if (document.getElementById('draw-toolbar').classList.contains('open')) {
-      document.getElementById('draw-toolbar').classList.remove('open');
-      document.getElementById('btn-draw-toggle').style.color = '';
-      // En móvil
-      if (window.innerWidth <= 768) {
-        document.getElementById('draw-toolbar').style.display = 'none';
-        document.getElementById('m-tab-draw')?.classList.remove('active');
-      }
-    }
     redrawLines();
   }
 
