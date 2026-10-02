@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backtests — Saturno</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=2">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .bt-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid #30363d; }
+    .bt-header a { color:#8b949e; text-decoration:none; font-size:0.85rem; }
+    .bt-header a:hover { color:#e6edf3; }
+    .bt-section { padding:18px; max-width:1100px; margin:0 auto; }
+    .bt-card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px 18px; margin-bottom:20px; }
+    .bt-card h2 { margin:0 0 10px; font-size:1rem; }
+    .bt-meta { font-size:0.72rem; color:#6e7681; margin-bottom:10px; }
+    .bt-verdict { padding:10px 12px; border-radius:8px; font-size:0.85rem; margin-bottom:14px; }
+    .bt-verdict.negative { background:#3a1a1a55; color:#f0883e; border:1px solid #da363355; }
+    .bt-verdict.positive { background:#1a3a2055; color:#3fb950; border:1px solid #3fb95055; }
+    table.bt-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+    table.bt-table th, table.bt-table td { text-align:right; padding:4px 8px; border-bottom:1px solid #21262d; }
+    table.bt-table th:first-child, table.bt-table td:first-child { text-align:left; }
+    table.bt-table th { color:#8b949e; font-weight:600; }
+    .bt-pos { color:#3fb950; }
+    .bt-neg { color:#da3633; }
+    .bt-flip { background:#3a1a1a33; }
+    .bt-stable { font-weight:700; }
+    .bt-empty { color:#6e7681; font-style:italic; padding:20px; text-align:center; }
+    .bt-regime-tabs { display:flex; gap:8px; margin-bottom:10px; }
+    .bt-regime-tab { padding:5px 12px; border-radius:16px; font-size:0.75rem; background:#21262d; color:#8b949e; cursor:pointer; border:1px solid #30363d; }
+    .bt-regime-tab.active { background:#f0883e22; color:#f0883e; border-color:#f0883e55; }
+  </style>
+</head>
+<body>
+  <div class="bt-header">
+    <h2 style="margin:0;font-size:1.1rem;">🧪 Resultados de Backtesting</h2>
+    <a href="/">← Volver al dashboard</a>
+  </div>
+
+  <div class="bt-section" id="content">
+    <p class="bt-empty">Cargando...</p>
+  </div>
+
+  <script>
+    function corrClass(v) {
+      if (v === null || v === undefined) return '';
+      return v >= 0 ? 'bt-pos' : 'bt-neg';
+    }
+    function fmt(v) {
+      if (v === null || v === undefined) return '—';
+      return (v >= 0 ? '+' : '') + v.toFixed(3);
+    }
+
+    function renderSignals(report) {
+      if (!report) {
+        return `<div class="bt-card"><p class="bt-empty">No hay reporte todavía. Corré <code>python backtest_signals.py</code> en la terminal.</p></div>`;
+      }
+      const horizons = report.horizons;
+      let html = `<div class="bt-card">
+        <h2>📊 Score de confluencia (scoring.py) — señales individuales</h2>
+        <div class="bt-meta">Generado: ${new Date(report.generated_at).toLocaleString('es-PE')} · Train/test split: ${report.train_test_split}</div>
+        <table class="bt-table"><thead><tr><th>Señal</th>`;
+      horizons.forEach(h => html += `<th colspan="2">+${h}d</th>`);
+      html += `</tr><tr><th></th>`;
+      horizons.forEach(() => html += `<th>train</th><th>test</th>`);
+      html += `</tr></thead><tbody>`;
+
+      for (const [name, byHorizon] of Object.entries(report.train_test)) {
+        html += `<tr>`;
+        html += `<td>${name}</td>`;
+        for (const h of horizons) {
+          const cell = byHorizon[h] || byHorizon[String(h)];
+          const cls = (cell && cell.sign_flip) ? 'bt-flip' : '';
+          const stableCls = (cell && cell.stable) ? 'bt-stable' : '';
+          html += `<td class="${cls} ${stableCls} ${corrClass(cell?.train)}">${fmt(cell?.train)}</td>`;
+          html += `<td class="${cls} ${stableCls} ${corrClass(cell?.test)}">${fmt(cell?.test)}</td>`;
+        }
+        html += `</tr>`;
+      }
+      html += `</tbody></table>
+        <p class="bt-meta" style="margin-top:10px;">Negrita = estable (mismo signo train/test, |corr|>0.03). Fondo rojo = cambia de signo entre train y test.</p>
+      </div>`;
+
+      // Regime breakdown
+      const regime = report.regime;
+      html += `<div class="bt-card">
+        <h2>🔀 Desglose por régimen de mercado (+90d, todo el histórico — descriptivo, no train/test)</h2>
+        <div class="bt-meta">Días por régimen: ${Object.entries(regime.days).map(([k,v])=>`${k}=${v}`).join(', ')}</div>
+        <table class="bt-table"><thead><tr><th>Señal</th><th>Alcista</th><th>Bajista</th><th>Lateral</th></tr></thead><tbody>`;
+      const allCols = new Set();
+      Object.values(regime.corr_90d).forEach(byCol => Object.keys(byCol).forEach(c => allCols.add(c)));
+      for (const col of allCols) {
+        html += `<tr><td>${col}</td>`;
+        for (const r of ['alcista','bajista','lateral']) {
+          const v = regime.corr_90d[r] ? regime.corr_90d[r][col] : null;
+          html += `<td class="${corrClass(v)}">${fmt(v)}</td>`;
+        }
+        html += `</tr>`;
+      }
+      html += `</tbody></table></div>`;
+      return html;
+    }
+
+    function renderLiquidity(report) {
+      if (!report) {
+        return `<div class="bt-card"><p class="bt-empty">No hay reporte todavía. Corré <code>python -m liquidity_index.backtest</code> en la terminal.</p></div>`;
+      }
+      const c = report.correlation;
+      const verdictClass = report.no_signal ? 'negative' : 'positive';
+      let html = `<div class="bt-card">
+        <h2>💧 Liquidity Index — correlación con BTC</h2>
+        <div class="bt-meta">Generado: ${new Date(report.generated_at).toLocaleString('es-PE')} · n_obs: ${c.n_obs}</div>
+        <div class="bt-verdict ${verdictClass}">${report.veredicto}</div>
+        <table class="bt-table"><thead><tr><th></th><th>Valor</th></tr></thead><tbody>
+          <tr><td>Nivel — Pearson</td><td class="${corrClass(c.corr_pearson_level)}">${fmt(c.corr_pearson_level)}</td></tr>
+          <tr><td>Nivel — Spearman</td><td class="${corrClass(c.corr_spearman_level)}">${fmt(c.corr_spearman_level)}</td></tr>`;
+      for (const [h, v] of Object.entries(c.forward_return_corr)) {
+        html += `<tr><td>Retorno futuro +${h}d</td><td class="${corrClass(v)}">${fmt(v)}</td></tr>`;
+      }
+      html += `</tbody></table></div>`;
+
+      html += `<div class="bt-card">
+        <h2>🏳️ Ciclos de halving (referencia contextual, NO prueba estadística — muestra insuficiente)</h2>
+        <table class="bt-table"><thead><tr><th>Halving</th><th>Ventana</th><th>Corr. índice-BTC</th><th>Retorno BTC ventana</th></tr></thead><tbody>`;
+      for (const cyc of report.cycles) {
+        if (cyc.status) {
+          html += `<tr><td>#${cyc.numero} (${cyc.halving})</td><td colspan="3" class="bt-empty">${cyc.status}</td></tr>`;
+        } else {
+          html += `<tr><td>#${cyc.numero} (${cyc.halving})</td><td>${cyc.ventana}</td><td class="${corrClass(cyc.corr_index_btc)}">${fmt(cyc.corr_index_btc)}</td><td>${cyc.retorno_btc_ventana!=null ? (cyc.retorno_btc_ventana*100).toFixed(1)+'%' : '—'}</td></tr>`;
+        }
+      }
+      html += `</tbody></table></div>`;
+      return html;
+    }
+
+    async function load() {
+      const res = await fetch('/api/backtests');
+      const data = await res.json();
+      document.getElementById('content').innerHTML =
+        renderSignals(data.signals) + renderLiquidity(data.liquidity);
+    }
+    load().catch(err => {
+      document.getElementById('content').innerHTML = `<p class="bt-empty">Error cargando reportes: ${err.message}</p>`;
+    });
+  </script>
+</body>
+</html>

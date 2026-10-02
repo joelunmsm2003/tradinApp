@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Top Movers — Saturno</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css?v=2">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .mv-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid #30363d; }
+    .mv-header a { color:#8b949e; text-decoration:none; font-size:0.85rem; }
+    .mv-header a:hover { color:#e6edf3; }
+    .mv-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:12px 18px; font-size:0.8rem; color:#8b949e; }
+    .mv-controls button { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:5px 12px; cursor:pointer; font:inherit; }
+    .mv-controls button.active { background:#1f6feb; border-color:#1f6feb; }
+    .mv-controls select { background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:5px 8px; font:inherit; }
+    .mv-grid { display:grid; grid-template-columns:1fr; max-width:900px; gap:16px; padding:0 18px 24px; }
+    @media (max-width:800px) { .mv-grid { grid-template-columns:1fr; } }
+    .mv-col h3 { margin:8px 0; font-size:0.95rem; }
+    table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+    th { text-align:right; color:#8b949e; font-weight:500; padding:6px 8px; border-bottom:1px solid #30363d; }
+    th:first-child, td:first-child { text-align:left; }
+    td { text-align:right; padding:7px 8px; border-bottom:1px solid #21262d; font-variant-numeric:tabular-nums; }
+    .coin { display:flex; align-items:center; gap:8px; }
+    .coin img { width:20px; height:20px; border-radius:50%; }
+    .coin small { color:#6e7681; }
+    .up { color:#3fb950; } .down { color:#f85149; }
+    #mv-status { margin-left:auto; }
+  </style>
+</head>
+<body>
+  <div class="mv-header">
+    <h2 style="margin:0;font-size:1.1rem;">🚀 Top Movers</h2>
+    <a href="/">← Volver al dashboard</a>
+  </div>
+  <div class="mv-controls">
+    <span>Ordenar por:</span>
+    <button data-k="chg_1h" class="active">1h</button>
+    <button data-k="chg_24h">24h</button>
+    <span>Volumen mín:</span>
+    <select id="mv-vol">
+      <option value="0">Todos</option>
+      <option value="1000000">$1M</option>
+      <option value="5000000" selected>$5M</option>
+      <option value="50000000">$50M</option>
+      <option value="250000000">$250M</option>
+    </select>
+    <span>Exchange:</span>
+    <select id="mv-ex"><option value="">Todos</option></select>
+    <span id="mv-status">Cargando…</span>
+  </div>
+  <div class="mv-grid">
+    <div class="mv-col"><h3 class="up">▲ Mayores subidas</h3><table id="mv-up"></table></div>
+  </div>
+
+  <script>
+    let coins = [], key = 'chg_1h', exch = {};
+    const fmtP = p => p >= 1 ? p.toLocaleString('en-US', {maximumFractionDigits:2}) : p.toPrecision(3);
+    const fmtV = v => v >= 1e9 ? (v/1e9).toFixed(1)+'B' : (v/1e6).toFixed(0)+'M';
+    const pct = v => v == null ? '—' : `<span class="${v>=0?'up':'down'}">${v>=0?'+':''}${v.toFixed(2)}%</span>`;
+
+    function row(c) {
+      return `<tr><td><div class="coin"><img src="${c.image||''}" alt=""><b>${c.symbol}</b><small>${c.name}</small></div></td>
+        <td>$${fmtP(c.price)}</td><td>${pct(c.chg_1h)}</td><td>${pct(c.chg_24h)}</td><td>$${fmtV(c.volume)}</td></tr>`;
+    }
+    const head = '<tr><th>Cripto</th><th>Precio</th><th>1h</th><th>24h</th><th>Vol</th></tr>';
+
+    function render() {
+      const minVol = +document.getElementById('mv-vol').value;
+      const ex = document.getElementById('mv-ex').value;
+      const set = ex && exch[ex] ? new Set(exch[ex].symbols) : null;
+      const list = coins.filter(c => c.volume >= minVol && c[key] != null && (!set || set.has(c.symbol))).sort((a,b) => b[key]-a[key]);
+      document.getElementById('mv-up').innerHTML = head + list.slice(0,30).map(row).join('');
+    }
+
+    async function load() {
+      const st = document.getElementById('mv-status');
+      try {
+        const d = await (await fetch('/api/movers')).json();
+        if (d.error) throw new Error(d.error);
+        coins = d.coins; render();
+        st.textContent = 'Actualizado ' + new Date(d.ts*1000).toLocaleTimeString();
+      } catch (e) { st.textContent = 'Error: ' + e.message; }
+    }
+
+    document.querySelectorAll('.mv-controls button').forEach(b => b.onclick = () => {
+      document.querySelectorAll('.mv-controls button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active'); key = b.dataset.k; render();
+    });
+    document.getElementById('mv-vol').onchange = render;
+    document.getElementById('mv-ex').onchange = render;
+    (async () => {
+      try {
+        exch = await (await fetch('/api/exchanges')).json();
+        const sel = document.getElementById('mv-ex');
+        Object.entries(exch).forEach(([k, v]) => sel.add(new Option(`${v.label} (${v.symbols.length})`, k)));
+      } catch (e) {}
+    })();
+    load(); setInterval(load, 60000);
+  </script>
+</body>
+</html>

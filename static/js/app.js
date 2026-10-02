@@ -34,11 +34,41 @@
   const bbLowerSeries = priceChart.addLineSeries({ color:'#58a6ff', lineWidth:1, priceLineVisible:false, lastValueVisible:false });
   const emaFastSeries  = priceChart.addLineSeries({ color:'#f0883e', lineWidth:1.5, priceLineVisible:false, lastValueVisible:true });
   const emaSlowSeries  = priceChart.addLineSeries({ color:'#bc8cff', lineWidth:1.5, priceLineVisible:false, lastValueVisible:true });
+  // SMA200 — la que usa classify_regime() en indicators.py para el badge de régimen
+  const sma200Series   = priceChart.addLineSeries({ color:'#e3b341', lineWidth:2, priceLineVisible:false, lastValueVisible:true });
+
+  // ---- EMAs adicionales (activadas desde Configuración) ----
+  // El backend solo manda las que están activas (visible:true); el resto ni se calcula.
+  const extraEmaSeries = {}; // period -> lightweight-charts series
+
+  function syncExtraEmas(entries) {
+    const wanted = new Set(entries.map(e => e.period));
+    for (const period of Object.keys(extraEmaSeries).map(Number)) {
+      if (!wanted.has(period)) {
+        priceChart.removeSeries(extraEmaSeries[period]);
+        delete extraEmaSeries[period];
+      }
+    }
+    for (const e of entries) {
+      let s = extraEmaSeries[e.period];
+      if (!s) {
+        s = priceChart.addLineSeries({ color: e.color, lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true });
+        extraEmaSeries[e.period] = s;
+      } else {
+        s.applyOptions({ color: e.color });
+      }
+      s.applyOptions({ visible: overlayState.ema });
+      s.setData(e.data);
+    }
+  }
   const volumeSeries   = priceChart.addHistogramSeries({
     priceScaleId: 'vol', priceLineVisible:false, lastValueVisible:false,
   });
+  const volumeMaSeries = priceChart.addLineSeries({
+    priceScaleId: 'vol', color:'#e6edf3cc', lineWidth:1.5, priceLineVisible:false, lastValueVisible:false,
+  });
   priceChart.priceScale('vol').applyOptions({
-    scaleMargins: { top: 0.85, bottom: 0.0 }, visible: false, borderVisible: false,
+    scaleMargins: { top: 0.72, bottom: 0.0 }, visible: false, borderVisible: false,
   });
 
   // ---- Sub-pane overlay series (visibles: false por defecto) ----
@@ -126,6 +156,32 @@
     document.getElementById('price-badge').textContent = '$' + data.price.toLocaleString();
     document.getElementById('last-update').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-PE');
 
+    const REGIME_INFO = {
+      alcista: { emoji: '📈', label: 'Alcista', color: '#3fb950' },
+      bajista: { emoji: '📉', label: 'Bajista', color: '#da3633' },
+      lateral: { emoji: '➡️', label: 'Lateral', color: '#8b949e' },
+    };
+    const regimeBadge = document.getElementById('regime-badge');
+    const regimeChip  = document.getElementById('regime-chip-value');
+    const r = REGIME_INFO[data.regime];
+    if (r) {
+      regimeBadge.textContent = `${r.emoji} ${r.label}`;
+      regimeBadge.style.color = r.color;
+      regimeBadge.title = `Régimen de tendencia (SMA200, 90d): ${r.label}. Ver backtest_signals.py — el score de confluencia históricamente fue contraproducente en régimen bajista.`;
+      regimeChip.textContent = `${r.emoji} ${r.label}`;
+      regimeChip.style.color = r.color;
+    } else {
+      regimeBadge.textContent = '';
+      regimeChip.textContent = '—';
+    }
+    const regimeWarning = document.getElementById('regime-warning');
+    if (data.regime === 'bajista') {
+      regimeWarning.style.display = 'block';
+      regimeWarning.textContent = '⚠️ Mercado en régimen bajista (SMA200 descendente): el backtest mostró que el score de confluencia históricamente dio falsas señales alcistas en este contexto — tratar con más cautela.';
+    } else {
+      regimeWarning.style.display = 'none';
+    }
+
     document.getElementById('price-title').textContent = 'BTC-USD';
     document.getElementById('rsi-title').textContent =
       `RSI (${cfg.rsi_period}) — sobreventa <${cfg.rsi_oversold} · sobrecompra >${cfg.rsi_overbought}`;
@@ -144,7 +200,10 @@
     bbLowerSeries.setData(data.bb_lower);
     emaFastSeries.setData(data.ema_fast);
     emaSlowSeries.setData(data.ema_slow);
+    sma200Series.setData(data.sma200 || []);
+    syncExtraEmas(data.extra_emas_data || []);
     volumeSeries.setData(data.volume);
+    volumeMaSeries.setData(data.volume_ma || []);
     if (_initialLoad) {
       _fitChart();
       _initialLoad = false;
@@ -215,12 +274,14 @@
     panel.innerHTML = data.signals.map(s => {
       const cls = s.triggered ? 'green' : 'red';
       const label = s.triggered ? 'ALCISTA' : 'BAJISTA';
+      const pts  = s.points ? `<span class="conf-tag ${cls==='green'?'bull':'bear'} signal-pts">+${s.points}</span>` : '';
       return `<div class="signal-card ${cls}">
         <span class="signal-dot"></span>
         <div class="signal-info">
           <div class="signal-name">${EMOJIS[s.name]||'✨'} ${s.name}</div>
           <div class="signal-detail" title="${s.detail}">${s.detail}</div>
         </div>
+        ${pts}
         <span class="signal-label">${label}</span>
       </div>`;
     }).join('');
@@ -329,7 +390,7 @@
   }
 
   // ---- Overlay toggles ----
-  const overlayState = { vol: true, bb: true, ema: true, rsi: false, macd: false, stoch: false };
+  const overlayState = { vol: true, bb: true, ema: true, sma200: true, rsi: false, macd: false, stoch: false };
 
   function toggleOverlay(key) {
     overlayState[key] = !overlayState[key];
@@ -339,10 +400,13 @@
 
     if (key === 'vol') {
       volumeSeries.applyOptions({ visible });
+      volumeMaSeries.applyOptions({ visible });
     } else if (key === 'bb') {
       [bbUpperSeries, bbMidSeries, bbLowerSeries].forEach(s => s.applyOptions({ visible }));
     } else if (key === 'ema') {
-      [emaFastSeries, emaSlowSeries].forEach(s => s.applyOptions({ visible }));
+      [emaFastSeries, emaSlowSeries, ...Object.values(extraEmaSeries)].forEach(s => s.applyOptions({ visible }));
+    } else if (key === 'sma200') {
+      sma200Series.applyOptions({ visible });
     } else if (key === 'rsi') {
       [overlayRsiSeries, overlayRsiOB, overlayRsiOS].forEach(s => s.applyOptions({ visible }));
       recomputeOverlayMargins();
@@ -380,6 +444,11 @@
       if (el) el.value = v;
     }
     syncMacdPreset(cfg.macd_fast, cfg.macd_slow, cfg.macd_signal);
+    (cfg.extra_emas || []).forEach((e, i) => {
+      document.getElementById(`c-ema-extra-${i}-on`).checked   = e.visible;
+      document.getElementById(`c-ema-extra-${i}-period`).value = e.period;
+      document.getElementById(`c-ema-extra-${i}-color`).value  = e.color;
+    });
     document.getElementById('cfg-overlay').classList.add('open');
   }
 
@@ -410,6 +479,11 @@
                   'ema_fast','ema_slow','confluence_threshold'];
     const body = {};
     for (const k of keys) body[k] = document.getElementById('c-' + k).value;
+    body.extra_emas = [0,1,2,3,4].map(i => ({
+      period:  parseInt(document.getElementById(`c-ema-extra-${i}-period`).value, 10),
+      color:   document.getElementById(`c-ema-extra-${i}-color`).value,
+      visible: document.getElementById(`c-ema-extra-${i}-on`).checked,
+    }));
     await fetch('/api/config', { method:'POST', body: JSON.stringify(body) });
     closeConfig();
     loadAll();
@@ -473,8 +547,11 @@
     horizontal: 'Clic para colocar línea horizontal',
     vertical:   'Clic para colocar línea vertical',
     trend:      'Clic punto 1 — luego clic punto 2',
+    fib:        'Clic punto 1 (inicio) — luego clic punto 2 (fin)',
     delete:     'Clic sobre una línea para borrarla',
   };
+  const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+  const FIB_COLORS = ['#787b86', '#f23645', '#ff9800', '#4caf50', '#089981', '#2962ff', '#7e57c2'];
 
   function toggleDrawToolbar() {
     const tb = document.getElementById('draw-toolbar');
@@ -496,8 +573,8 @@
   function setDrawMode(mode) {
     drawingMode = drawingMode === mode ? null : mode;
     pendingTrendPoint = null;
-    ['h','v','t','del'].forEach(k => document.getElementById('db-'+k)?.classList.remove('active','del-mode'));
-    const map = { horizontal:'db-h', vertical:'db-v', trend:'db-t', delete:'db-del' };
+    ['h','v','t','fib','del'].forEach(k => document.getElementById('db-'+k)?.classList.remove('active','del-mode'));
+    const map = { horizontal:'db-h', vertical:'db-v', trend:'db-t', fib:'db-fib', delete:'db-del' };
     if (drawingMode && map[drawingMode]) {
       const btn = document.getElementById(map[drawingMode]);
       btn.classList.add(drawingMode === 'delete' ? 'del-mode' : 'active');
@@ -619,7 +696,7 @@
 
   function _findNearestEndpoint(tx, ty) {
     for (const d of savedDrawings) {
-      if (d.type !== 'trend') continue;
+      if (d.type !== 'trend' && d.type !== 'fib') continue;
       const x1 = priceChart.timeScale().timeToCoordinate(d.p1.time);
       const y1 = candleSeries.priceToCoordinate(d.p1.price);
       const x2 = priceChart.timeScale().timeToCoordinate(d.p2.time);
@@ -631,6 +708,53 @@
       }
     }
     return null;
+  }
+
+  function _makeFibLevels(x1, y1, x2, y2, drawing) {
+    const g   = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const xLo = Math.min(x1, x2);
+    const xHi = Math.max(x1, x2);
+    const p1  = drawing.p1.price, p2 = drawing.p2.price;
+
+    const points = FIB_LEVELS.map((level, i) => {
+      const price = p1 + (p2 - p1) * level;
+      return { level, price, y: candleSeries.priceToCoordinate(price), color: FIB_COLORS[i] };
+    }).filter(p => p.y != null);
+
+    // Bandas de color entre niveles consecutivos (estilo TradingView)
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i], b = points[i + 1];
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', xLo);
+      rect.setAttribute('y', Math.min(a.y, b.y));
+      rect.setAttribute('width', xHi - xLo);
+      rect.setAttribute('height', Math.abs(b.y - a.y));
+      rect.setAttribute('fill', a.color);
+      rect.setAttribute('opacity', '0.12');
+      rect.setAttribute('pointer-events', 'none');
+      g.appendChild(rect);
+    }
+
+    for (const p of points) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', xLo); line.setAttribute('y1', p.y);
+      line.setAttribute('x2', xHi); line.setAttribute('y2', p.y);
+      line.setAttribute('stroke', p.color);
+      line.setAttribute('stroke-width', p.level === 0 || p.level === 1 ? '1.3' : '1');
+      line.setAttribute('opacity', '0.9');
+      g.appendChild(line);
+
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', xHi + 4);
+      label.setAttribute('y', p.y + 3);
+      label.setAttribute('fill', p.color);
+      label.setAttribute('font-size', '10');
+      label.setAttribute('font-family', 'monospace');
+      label.setAttribute('pointer-events', 'none');
+      label.textContent = `${(p.level * 100).toFixed(1)}% (${p.price.toFixed(2)})`;
+      g.appendChild(label);
+    }
+    return g;
   }
 
   _chartContainer.addEventListener('touchstart', e => {
@@ -674,6 +798,25 @@
     document.addEventListener('touchmove', onMove, { passive: false });
     document.addEventListener('touchend',  onEnd);
   }, { passive: false });
+
+  // Arrastre de endpoints con mouse (desktop) — captura antes que el drag de línea completa
+  _chartContainer.addEventListener('mousedown', e => {
+    if (drawingMode) return;
+    const rect = svgEl.getBoundingClientRect();
+    const mx   = e.clientX - rect.left;
+    const my   = e.clientY - rect.top;
+    const hit  = _findNearestEndpoint(mx, my);
+    if (!hit) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    selectedId    = hit.drawing.id;
+    dragEndpoint  = { id: hit.drawing.id, point: hit.point };
+    _activeHandle = { id: hit.drawing.id, point: hit.point };
+    priceChart.applyOptions({ handleScroll: false, handleScale: false });
+    document.body.style.cursor = 'grabbing';
+    redrawLines();
+  }, true);
 
   function _makePriceLabel(w, y, price, color) {
     const LW = 78, LH = 17, LR = 3, PAD = 6;
@@ -720,12 +863,13 @@
         const x = priceChart.timeScale().timeToCoordinate(d.time);
         if (x == null) continue;
         el = makeLine(x, 0, x, h, d.color, d);
-      } else if (d.type === 'trend') {
+      } else if (d.type === 'trend' || d.type === 'fib') {
         const x1 = priceChart.timeScale().timeToCoordinate(d.p1.time);
         const y1 = candleSeries.priceToCoordinate(d.p1.price);
         const x2 = priceChart.timeScale().timeToCoordinate(d.p2.time);
         const y2 = candleSeries.priceToCoordinate(d.p2.price);
         if (x1==null||y1==null||x2==null||y2==null) continue;
+        if (d.type === 'fib') svgEl.appendChild(_makeFibLevels(x1, y1, x2, y2, d));
         el = makeLine(x1, y1, x2, y2, d.color, d);
         if (el) {
           svgEl.appendChild(el);
@@ -817,7 +961,7 @@
       if (origX == null) return;
       const newTime = priceChart.timeScale().coordinateToTime(origX + dx);
       if (newTime != null) savedDrawings[idx].time = newTime;
-    } else if (d.type === 'trend') {
+    } else if (d.type === 'trend' || d.type === 'fib') {
       const ox1 = priceChart.timeScale().timeToCoordinate(d.p1.time);
       const oy1 = candleSeries.priceToCoordinate(d.p1.price);
       const ox2 = priceChart.timeScale().timeToCoordinate(d.p2.time);
@@ -839,7 +983,9 @@
     if (dragEndpoint) {
       const id  = dragEndpoint.id;
       const idx = savedDrawings.findIndex(s => s.id === id);
-      dragEndpoint = null;
+      dragEndpoint  = null;
+      _activeHandle = null;
+      priceChart.applyOptions({ handleScroll: true, handleScale: true });
       document.body.style.cursor = ''; document.body.style.userSelect = '';
       if (idx !== -1) {
         const { type, p1, p2, color } = savedDrawings[idx];
@@ -915,16 +1061,16 @@
       saveDrawing({ type:'horizontal', price:parseFloat(price.toFixed(2)), color });
     } else if (drawingMode === 'vertical') {
       saveDrawing({ type:'vertical', time, color });
-    } else if (drawingMode === 'trend') {
+    } else if (drawingMode === 'trend' || drawingMode === 'fib') {
       if (!pendingTrendPoint) {
         pendingTrendPoint = { time, price: parseFloat(price.toFixed(2)) };
         hintEl.textContent = 'Clic punto 2 para completar';
         redrawLines();
       } else {
-        saveDrawing({ type:'trend', p1:pendingTrendPoint, p2:{time, price:parseFloat(price.toFixed(2))}, color });
+        saveDrawing({ type:drawingMode, p1:pendingTrendPoint, p2:{time, price:parseFloat(price.toFixed(2))}, color });
         pendingTrendPoint = null;
         previewMousePos   = null;
-        hintEl.textContent = DRAW_HINTS.trend;
+        hintEl.textContent = DRAW_HINTS[drawingMode];
       }
     }
   });
@@ -1056,79 +1202,75 @@
   }
 
   // ---- Mobile tab bar ----
+  // Cada tab declara cómo saber si está abierto y cómo abrirse/cerrarse.
+  // toggleMobileTab() se encarga de la exclusividad (solo un panel a la vez) y del estado 'active'.
+  const MOBILE_TABS = {
+    ind: {
+      btn:    'm-tab-ind',
+      isOpen: () => document.getElementById('mobile-ind-panel').classList.contains('open'),
+      open:   () => document.getElementById('mobile-ind-panel').classList.add('open'),
+      close:  () => document.getElementById('mobile-ind-panel').classList.remove('open'),
+    },
+    sig: {
+      btn:    'm-tab-sig',
+      isOpen: () => !document.getElementById('sidebar').classList.contains('hidden'),
+      open:   () => document.getElementById('sidebar').classList.remove('hidden'),
+      close:  () => document.getElementById('sidebar').classList.add('hidden'),
+    },
+    draw: {
+      btn:    'm-tab-draw',
+      isOpen: () => document.getElementById('draw-toolbar').classList.contains('open'),
+      open:   () => {
+        const tb = document.getElementById('draw-toolbar');
+        tb.style.display = 'flex';
+        tb.classList.add('open');
+      },
+      close:  () => {
+        const tb = document.getElementById('draw-toolbar');
+        tb.classList.remove('open');
+        tb.style.display = 'none';
+        setDrawMode(null);
+      },
+    },
+    cfg: {
+      btn:    'm-tab-cfg',
+      isOpen: () => document.getElementById('cfg-overlay').classList.contains('open'),
+      open:   openConfig,
+      close:  closeConfig,
+    },
+    info: {
+      btn:    'm-tab-info',
+      isOpen: () => document.getElementById('info-overlay').classList.contains('open'),
+      open:   openInfo,
+      close:  closeInfo,
+    },
+  };
+
   // Cierra todos los paneles móviles excepto el indicado
   function _closeAllMobilePanels(except) {
-    if (except !== 'ind') {
-      document.getElementById('mobile-ind-panel').classList.remove('open');
-      document.getElementById('m-tab-ind').classList.remove('active');
-    }
-    if (except !== 'sig') {
-      document.getElementById('sidebar').classList.add('hidden');
-      document.getElementById('m-tab-sig').classList.remove('active');
-    }
-    if (except !== 'draw') {
-      const tb = document.getElementById('draw-toolbar');
-      tb.classList.remove('open');
-      tb.style.display = 'none';
-      document.getElementById('m-tab-draw').classList.remove('active');
-      setDrawMode(null);
-    }
-    if (except !== 'info') {
-      document.getElementById('info-overlay').classList.remove('open');
-    }
-    if (except !== 'cfg') {
-      document.getElementById('cfg-overlay').classList.remove('open');
+    for (const [name, tab] of Object.entries(MOBILE_TABS)) {
+      if (name === except) continue;
+      tab.close();
+      document.getElementById(tab.btn)?.classList.remove('active');
     }
   }
 
-  function toggleMobileDraw() {
-    const tab = document.getElementById('m-tab-draw');
-    const tb  = document.getElementById('draw-toolbar');
-    const isOpen = tb.classList.contains('open');
-    if (!isOpen) {
-      _closeAllMobilePanels('draw');
-      tb.style.display = 'flex';
-      tb.classList.add('open');
-      tab.classList.add('active');
+  function toggleMobileTab(name) {
+    const tab     = MOBILE_TABS[name];
+    const wasOpen = tab.isOpen();
+    _closeAllMobilePanels(name);
+    if (wasOpen) {
+      tab.close();
+      document.getElementById(tab.btn)?.classList.remove('active');
     } else {
-      tb.classList.remove('open');
-      tb.style.display = 'none';
-      tab.classList.remove('active');
-      setDrawMode(null);
-    }
-  }
-
-  function toggleMobileInd() {
-    const panel  = document.getElementById('mobile-ind-panel');
-    const tab    = document.getElementById('m-tab-ind');
-    const isOpen = panel.classList.contains('open');
-    if (!isOpen) {
-      _closeAllMobilePanels('ind');
-      panel.classList.add('open');
-      tab.classList.add('active');
-    } else {
-      panel.classList.remove('open');
-      tab.classList.remove('active');
-    }
-  }
-
-  function toggleMobileSig() {
-    const sb     = document.getElementById('sidebar');
-    const tab    = document.getElementById('m-tab-sig');
-    const isOpen = !sb.classList.contains('hidden');
-    if (!isOpen) {
-      _closeAllMobilePanels('sig');
-      sb.classList.remove('hidden');
-      tab.classList.add('active');
-    } else {
-      sb.classList.add('hidden');
-      tab.classList.remove('active');
+      tab.open();
+      document.getElementById(tab.btn)?.classList.add('active');
     }
   }
 
   // Sincronizar botones del panel móvil con los del desktop
   function syncMobileButtons() {
-    ['vol','bb','ema','rsi','macd','stoch'].forEach(k => {
+    ['vol','bb','ema','sma200','rsi','macd','stoch'].forEach(k => {
       const desktop = document.getElementById('btn-' + k);
       const mobile  = document.getElementById('m-btn-' + k);
       if (desktop && mobile) {

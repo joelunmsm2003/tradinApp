@@ -51,3 +51,52 @@ VIX Spike only runs on `^VIX`. Golden Cross is skipped for `^VIX`.
 ## Cooldown
 
 `cooldowns.json` tracks last alert time per `symbol::indicator`. Same signal won't re-fire within `COOLDOWN_HOURS` (default 24h). Delete the file to reset all cooldowns.
+
+## Liquidity Index (liquidity_index/)
+
+Separate sub-project: studies whether US/global liquidity (M2, Fed balance sheet, RRP, TGA,
+DXY, Treasury 10Y, stablecoin market cap) correlates with BTC price and halving cycles.
+Independent from the monitor/alerts system above — own storage, own pipeline.
+
+### Setup
+
+```bash
+cd liquidity_index
+docker compose --env-file ../.env up -d   # Postgres local
+cd ..
+python -m liquidity_index.run_daily --once
+```
+
+Requires `FRED_API_KEY` (free, https://fred.stlouisfed.org/docs/api/api_key.html) and
+`POSTGRES_*` vars in `.env` (see `.env.example`). Without `FRED_API_KEY` the FRED collector
+logs an error and skips — the market (BTC/DXY) and stablecoin collectors still run fine.
+
+### Architecture
+
+- **`config.py`** — series/tickers, sign-inversion map, index weights (provisional, not
+  validated), halving dates, backtest cycle window.
+- **`db.py`** — psycopg2 connection + idempotent upsert helpers (`ON CONFLICT ... DO UPDATE
+  ... WHERE value IS DISTINCT FROM`, so reruns don't duplicate rows or bump timestamps
+  on unchanged data).
+- **`collectors/`** — one module per source: `fred_collector.py` (FRED REST API, no `fredapi`
+  dep), `market_collector.py` (yfinance, same pattern as `web.py::_get_btc_df`),
+  `stablecoin_collector.py` (DefiLlama public API, no key).
+- **`normalization.py`** — pct_change, yoy_change, zscore, rolling_mean, invert_sign.
+- **`liquidity_index.py`** — v1 index = weighted sum of z-scored series (computed on read,
+  not persisted — weights aren't stable enough yet to justify a table).
+- **`halvings.py`** — historical + estimated halving dates; BTC returns/drawdown/volatility.
+- **`backtest.py`** — correlation vs BTC (level + forward returns), and per-halving-cycle
+  analysis using an **asymmetric window (-180d / +540d)**, not symmetric ±90/180 — BTC cycle
+  tops historically land 12-18 months *after* the halving, not on the date itself. Also
+  reports where the index *fails* to correlate, not just where it works.
+- **`run_daily.py --once`** — full pipeline (collect → validate → upsert). Meant to be
+  triggered by Windows Task Scheduler daily, not run as a long-lived process like `monitor.py`.
+- Dashboard: `/liquidity` route in `web.py` (own template `templates/liquidity.html`),
+  reads via `/api/liquidity`. Reuses lightweight-charts, no build step.
+
+### Known gotcha
+
+lightweight-charts' `fitContent()` doesn't auto-shrink enough for ~16 years of daily data —
+had to explicitly set both `barSpacing` and `minBarSpacing` low in the chart options
+(see `templates/liquidity.html`), or it silently clamps the visible range to the most
+recent ~80 bars.

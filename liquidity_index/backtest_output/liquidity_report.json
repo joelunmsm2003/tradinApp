@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-09-24T20:47:35.330669+00:00",
+  "correlation": {
+    "n_obs": 4042,
+    "corr_pearson_level": 0.3863240128180021,
+    "corr_spearman_level": 0.16845647093735108,
+    "forward_return_corr": {
+      "7": 0.0005312332038124785,
+      "30": 0.0048431552925098705,
+      "90": -0.01931350589108497,
+      "180": -0.05331293895013693
+    }
+  },
+  "veredicto": "Sin relación predictiva significativa con retornos futuros de BTC en ningún horizonte. El índice v1 describe contexto de nivel, NO debe usarse como señal de entrada/salida.",
+  "no_signal": true,
+  "cycles": [
+    {
+      "halving": "2012-11-28",
+      "numero": 1,
+      "status": "sin datos suficientes"
+    },
+    {
+      "halving": "2016-07-09",
+      "numero": 2,
+      "ventana": "2016-01-11 -> 2017-12-31",
+      "corr_index_btc": -0.3710278698965359,
+      "retorno_btc_ventana": 30.568947758517048,
+      "n_obs": 514
+    },
+    {
+      "halving": "2020-05-11",
+      "numero": 3,
+      "ventana": "2019-11-13 -> 2021-11-02",
+      "corr_index_btc": 0.3605697138773068,
+      "retorno_btc_ventana": 6.178078643975644,
+      "n_obs": 721
+    },
+    {
+      "halving": "2024-04-20",
+      "numero": 4,
+      "ventana": "2023-10-23 -> 2025-10-12",
+      "corr_index_btc": 0.6931314877106521,
+      "retorno_btc_ventana": 2.4808967475616512,
+      "n_obs": 721
+    }
+  ]
+}

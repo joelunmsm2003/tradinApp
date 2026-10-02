@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Señales vs Precio — Saturno</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css?v=2">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .sh-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid #30363d; }
+    .sh-header a { color:#8b949e; text-decoration:none; font-size:0.85rem; }
+    .sh-header a:hover { color:#e6edf3; }
+    #sh-price-wrap { position:relative; width:100%; height:55vh; }
+    #sh-price-bands { position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+    #sh-price { position:absolute; inset:0; z-index:1; width:100%; height:100%; }
+    #sh-score { width:100%; height:22vh; }
+    .sh-legend { display:flex; gap:16px; padding:10px 18px; font-size:0.8rem; color:#8b949e; flex-wrap:wrap; }
+    .sh-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; }
+    .sh-note { padding:0 18px 18px; font-size:0.75rem; color:#6e7681; max-width:900px; }
+  </style>
+</head>
+<body>
+  <div class="sh-header">
+    <h2 style="margin:0;font-size:1.1rem;">📈 Señales vs Precio (validación visual)</h2>
+    <a href="/">← Volver al dashboard</a>
+  </div>
+  <div class="sh-legend">
+    <span><span class="sh-dot" style="background:#58a6ff;"></span>BTC/USD</span>
+    <span><span class="sh-dot" style="background:#e3b341;"></span>net_score (media móvil 14d)</span>
+    <span><span class="sh-dot" style="background:#3fb95088;"></span>banda: predominio alcista (14d)</span>
+    <span><span class="sh-dot" style="background:#da363388;"></span>banda: predominio bajista (14d)</span>
+  </div>
+  <div id="sh-price-wrap">
+    <div id="sh-price-bands"></div>
+    <div id="sh-price"></div>
+  </div>
+  <div id="sh-score"></div>
+  <p class="sh-note">
+    Panel inferior: <code>net_score = bull_score - bear_score</code> del día, mismo cálculo vectorizado de
+    <code>backtest_signals.py</code>. Sirve para chequear a ojo si el score sube/baja cuando "debería" —
+    no reemplaza la correlación estadística de <a href="/backtests" style="color:#8b949e;">/backtests</a>,
+    es un complemento visual para detectar algo raro (ej: un score que se queda plano en tramos donde el
+    precio se mueve mucho, o que se dispara justo antes de un giro).
+  </p>
+
+  <script>
+    async function load() {
+      const res = await fetch('/api/signals-history');
+      const data = await res.json();
+
+      const priceChart = LightweightCharts.createChart(document.getElementById('sh-price'), {
+        layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#c9d1d9' },
+        grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+        rightPriceScale: { borderColor: '#30363d' },
+        timeScale: { borderColor: '#30363d', barSpacing: 0.1, minBarSpacing: 0.01 },
+      });
+      const priceSeries = priceChart.addLineSeries({ color: '#58a6ff', lineWidth: 1.5 });
+      priceSeries.setData(data.close);
+      priceChart.timeScale().fitContent();
+
+      // ---- Bandas de fondo rojo/verde según el signo de net_score ----
+      // Fusiono días consecutivos con el mismo signo en un solo segmento para no
+      // dibujar miles de divs sueltos.
+      const bands = [];
+      let segStart = null, segSign = null, segEndTime = null;
+      for (const d of data.net_score_ma14) {
+        const sign = d.value >= 0 ? 1 : -1;
+        if (sign !== segSign) {
+          if (segStart !== null) bands.push({ from: segStart, to: segEndTime, sign: segSign });
+          segStart = d.time;
+          segSign = sign;
+        }
+        segEndTime = d.time;
+      }
+      if (segStart !== null) bands.push({ from: segStart, to: segEndTime, sign: segSign });
+
+      const bandsEl = document.getElementById('sh-price-bands');
+      let _bandsRaf = false;
+      function redrawBands() {
+        if (_bandsRaf) return;
+        _bandsRaf = true;
+        requestAnimationFrame(() => {
+          _bandsRaf = false;
+          const ts = priceChart.timeScale();
+          const range = ts.getVisibleRange();
+          bandsEl.innerHTML = '';
+          if (!range) return;
+          const h = bandsEl.clientHeight;
+          for (const b of bands) {
+            if (b.to < range.from || b.from > range.to) continue;
+            let x1 = ts.timeToCoordinate(b.from);
+            let x2 = ts.timeToCoordinate(b.to);
+            if (x1 == null) x1 = 0;
+            if (x2 == null) x2 = bandsEl.clientWidth;
+            const div = document.createElement('div');
+            div.style.cssText = `position:absolute;top:0;height:${h}px;left:${x1}px;width:${Math.max(1, x2 - x1)}px;` +
+              `background:${b.sign > 0 ? '#3fb95022' : '#da363322'};`;
+            bandsEl.appendChild(div);
+          }
+        });
+      }
+      priceChart.timeScale().subscribeVisibleTimeRangeChange(redrawBands);
+      window.addEventListener('resize', redrawBands);
+      redrawBands();
+
+      const scoreChart = LightweightCharts.createChart(document.getElementById('sh-score'), {
+        layout: { background: { color: '#0d1117' }, textColor: '#c9d1d9' },
+        grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+        rightPriceScale: { borderColor: '#30363d' },
+        timeScale: { borderColor: '#30363d', barSpacing: 0.1, minBarSpacing: 0.01, visible: true },
+      });
+      const netSeries = scoreChart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: true });
+      netSeries.setData(data.net_score.map(d => ({
+        time: d.time, value: d.value,
+        color: d.value >= 0 ? '#3fb95055' : '#da363355',
+      })));
+      const ma14Series = scoreChart.addLineSeries({ color: '#e3b341', lineWidth: 2, priceLineVisible: false });
+      ma14Series.setData(data.net_score_ma14);
+      scoreChart.timeScale().fitContent();
+
+      // Sincronizar zoom/scroll entre los dos charts
+      priceChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (range) scoreChart.timeScale().setVisibleLogicalRange(range);
+      });
+      scoreChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (range) priceChart.timeScale().setVisibleLogicalRange(range);
+      });
+
+      window.addEventListener('resize', () => {
+        priceChart.applyOptions({ width: document.getElementById('sh-price').clientWidth });
+        scoreChart.applyOptions({ width: document.getElementById('sh-score').clientWidth });
+      });
+    }
+    load().catch(err => {
+      document.getElementById('sh-price').innerHTML =
+        `<p style="color:#da3633;padding:20px;">Error cargando datos: ${err.message}</p>`;
+    });
+  </script>
+</body>
+</html>

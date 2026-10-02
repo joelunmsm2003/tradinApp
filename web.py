@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 import uuid
 import urllib.request
@@ -10,8 +11,8 @@ from flask import Flask, jsonify, render_template, request
 
 from alerts import HISTORY_FILE
 
-from indicators import _ema, _macd, _rsi, _stoch_rsi
-from scoring import calculate_score
+from indicators import _ema, _macd, _rsi, _stoch_rsi, classify_regime
+from scoring import _get_fng_value, calculate_score
 
 app = Flask(__name__)
 
@@ -42,14 +43,26 @@ def _get_btc_df(interval: str = "1d") -> pd.DataFrame:
     else:
         kw["period"] = cfg["period"]
 
-    df = yf.download("BTC-USD", **kw)
-    if hasattr(df.columns, "levels"):
-        df.columns = df.columns.droplevel(1)
+    try:
+        df = yf.download("BTC-USD", **kw)
+        if hasattr(df.columns, "levels"):
+            df.columns = df.columns.droplevel(1)
 
-    if cfg["resample"]:
-        df = df.resample(cfg["resample"]).agg(
-            {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
-        ).dropna()
+        if cfg["resample"]:
+            df = df.resample(cfg["resample"]).agg(
+                {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+            ).dropna()
+
+        if df.empty:
+            raise ValueError("yfinance devolvió un DataFrame vacío")
+    except Exception as e:
+        # Falla transitoria de yfinance (rate limit, hipo de red, etc.) — si hay un
+        # dato bueno previo en memoria (aunque esté vencido), usarlo en vez de romper
+        # el endpoint. No cacheamos el resultado vacío/fallido para no quedar pegados.
+        if cache["df"] is not None:
+            print(f"[_get_btc_df] fetch falló ({e}), usando último dato cacheado ({interval})")
+            return cache["df"]
+        raise
 
     _df_cache[interval] = {"df": df, "ts": now}
     return df
@@ -69,7 +82,38 @@ DEFAULTS = {
     "ema_fast":             50,
     "ema_slow":             200,
     "confluence_threshold": 4,
+    "extra_emas": [  # 5 EMAs adicionales listas para activar — [{"period","color","visible"}]
+        {"period": 9,   "color": "#3fb950", "visible": False},
+        {"period": 21,  "color": "#58a6ff", "visible": False},
+        {"period": 55,  "color": "#f0883e", "visible": False},
+        {"period": 100, "color": "#bc8cff", "visible": False},
+        {"period": 150, "color": "#da3633", "visible": False},
+    ],
 }
+
+_HEX_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
+_MAX_EXTRA_EMAS = 5
+
+
+def _sanitize_extra_emas(raw) -> list:
+    if not isinstance(raw, list):
+        return []
+    out, seen = [], set()
+    for item in raw[:_MAX_EXTRA_EMAS]:
+        if not isinstance(item, dict):
+            continue
+        try:
+            period = int(item.get("period"))
+        except (TypeError, ValueError):
+            continue
+        if not (2 <= period <= 500) or period in seen:
+            continue
+        seen.add(period)
+        color = item.get("color", "#e6edf3")
+        if not isinstance(color, str) or not _HEX_RE.match(color):
+            color = "#e6edf3"
+        out.append({"period": period, "color": color, "visible": bool(item.get("visible", True))})
+    return out
 
 
 def load_config() -> dict:
@@ -100,7 +144,7 @@ def _current_signals(close, df, rsi_series, macd_line, signal_line,
         label = f"RSI = {rsi_val:.1f} — zona bajista"
     else:
         label = f"RSI = {rsi_val:.1f} — sobreventa (<{cfg['rsi_oversold']})"
-    signals.append({"name": "RSI", "triggered": bullish, "detail": label})
+    signals.append({"name": "RSI", "triggered": bullish, "detail": label, "points": 2})
 
     m = float(macd_line.iloc[-1])
     s = float(signal_line.iloc[-1])
@@ -109,6 +153,7 @@ def _current_signals(close, df, rsi_series, macd_line, signal_line,
         "name": "MACD",
         "triggered": macd_bull,
         "detail": f"MACD {m:+.2f} {'>' if macd_bull else '<'} Signal {s:+.2f}",
+        "points": 2,
     })
 
     price = float(close.iloc[-1])
@@ -138,7 +183,7 @@ def _current_signals(close, df, rsi_series, macd_line, signal_line,
     else:
         bb_bull  = False
         bb_label = f"BB bajista: {price:,.0f} bajo SMA20 {sma20:,.0f}"
-    signals.append({"name": "Bollinger Bands", "triggered": bb_bull, "detail": bb_label})
+    signals.append({"name": "Bollinger Bands", "triggered": bb_bull, "detail": bb_label, "points": 2})
 
     ef = float(ema_fast_s.iloc[-1])
     es = float(ema_slow_s.iloc[-1])
@@ -148,6 +193,7 @@ def _current_signals(close, df, rsi_series, macd_line, signal_line,
         "name": f"EMA {cfg['ema_fast']}/{cfg['ema_slow']}",
         "triggered": golden,
         "detail": f"{cross}: EMA{cfg['ema_fast']} {ef:,.0f} {'>' if golden else '<'} EMA{cfg['ema_slow']} {es:,.0f}",
+        "points": 3,
     })
 
     # Stoch RSI — alcista si %K > %D y ambos < 80
@@ -163,7 +209,7 @@ def _current_signals(close, df, rsi_series, macd_line, signal_line,
             stoch_label = f"StochRSI %K={k_val:.1f} > %D={d_val:.1f} (alcista)"
         else:
             stoch_label = f"StochRSI %K={k_val:.1f} < %D={d_val:.1f} (bajista)"
-        signals.append({"name": "Stoch RSI", "triggered": stoch_bull, "detail": stoch_label})
+        signals.append({"name": "Stoch RSI", "triggered": stoch_bull, "detail": stoch_label, "points": 1})
 
     # Volume spike — alcista si volumen > 2× promedio (interés del mercado)
     if "Volume" in df.columns:
@@ -177,6 +223,7 @@ def _current_signals(close, df, rsi_series, macd_line, signal_line,
                 "name": "Volumen",
                 "triggered": vol_spike,
                 "detail": f"Vol {curr_vol:,.0f} = {ratio:.1f}× promedio 20d",
+                "points": 1,
             })
 
     # ATR — True Range de HOY vs ATR promedio (respuesta inmediata a velas grandes)
@@ -197,6 +244,24 @@ def _current_signals(close, df, rsi_series, macd_line, signal_line,
             "name": "ATR",
             "triggered": curr_close >= prev_close,
             "detail": f"Vela={tr_today:,.0f} = {atr_ratio:.1f}× ATR ({vol_label}) — {direccion}",
+            "points": 1,
+        })
+
+    fng_val = _get_fng_value()
+    if fng_val is not None:
+        # Miedo extremo movido a bajista: backtest_signals.py mostró correlación negativa
+        # y estable con retornos futuros de BTC (históricamente siguió cayendo, no rebotó).
+        if fng_val <= 25:
+            fng_label, fng_bull = f"F&G = {fng_val} — miedo extremo", False
+        elif fng_val >= 75:
+            fng_label, fng_bull = f"F&G = {fng_val} — codicia extrema", False
+        else:
+            fng_label, fng_bull = f"F&G = {fng_val} — zona neutral", fng_val >= 50
+        signals.append({
+            "name": "Fear & Greed",
+            "triggered": fng_bull,
+            "detail": fng_label,
+            "points": 1 if (fng_val <= 25 or fng_val >= 75) else 0,
         })
 
     return signals
@@ -216,6 +281,109 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/liquidity")
+def liquidity_page():
+    return render_template("liquidity.html")
+
+
+SIGNALS_REPORT_PATH = os.path.join("backtest_output", "signals_report.json")
+LIQUIDITY_REPORT_PATH = os.path.join("liquidity_index", "backtest_output", "liquidity_report.json")
+
+
+def _load_json_report(path):
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+@app.route("/backtests")
+def backtests_page():
+    return render_template("backtests.html")
+
+
+@app.route("/api/backtests")
+def api_backtests():
+    return jsonify({
+        "signals": _load_json_report(SIGNALS_REPORT_PATH),
+        "liquidity": _load_json_report(LIQUIDITY_REPORT_PATH),
+    })
+
+
+@app.route("/signals-history")
+def signals_history_page():
+    return render_template("signals_history.html")
+
+
+_signals_history_cache = {"data": None, "ts": 0.0}
+_SIGNALS_HISTORY_TTL = 1800  # 30 min, igual que _get_btc_df
+
+
+@app.route("/api/signals-history")
+def api_signals_history():
+    from backtest_signals import CFG, _load_fng, compute_score_series
+
+    now = time.time()
+    cache = _signals_history_cache
+    if cache["data"] is not None and now - cache["ts"] < _SIGNALS_HISTORY_TTL:
+        return jsonify(cache["data"])
+
+    df = _get_btc_df("1d")
+    fng = _load_fng()
+    scores = compute_score_series(df, fng, CFG)
+    scores["regime"] = classify_regime(scores["close"])
+    scores["net_score_ma14"] = scores["net_score"].rolling(14).mean()
+
+    def series(col):
+        return [
+            {"time": int(ts.timestamp()), "value": round(float(v), 4)}
+            for ts, v in scores[col].items() if v == v
+        ]
+
+    result = {
+        "close": series("close"),
+        "bull_score": series("bull_score"),
+        "bear_score": series("bear_score"),
+        "net_score": series("net_score"),
+        "net_score_ma14": series("net_score_ma14"),
+    }
+    cache["data"] = result
+    cache["ts"] = now
+    return jsonify(result)
+
+
+@app.route("/api/liquidity")
+def api_liquidity():
+    from liquidity_index import db as li_db
+    from liquidity_index.liquidity_index import calculate_liquidity_index
+
+    conn = li_db.get_connection()
+    try:
+        index_series = calculate_liquidity_index(conn)
+        btc_series = li_db.read_series(conn, "mercado", "BTC-USD")
+        with conn.cursor() as cur:
+            cur.execute("SELECT fecha, numero, es_estimado FROM halvings ORDER BY fecha")
+            halvings = [
+                {"time": int(pd.Timestamp(row[0]).timestamp()), "numero": row[1], "es_estimado": row[2]}
+                for row in cur.fetchall()
+            ]
+    finally:
+        conn.close()
+
+    def series_to_points(s):
+        return [
+            {"time": int(ts.timestamp()), "value": round(float(v), 6)}
+            for ts, v in s.items()
+            if v == v  # descarta NaN
+        ]
+
+    return jsonify({
+        "liquidity_index": series_to_points(index_series),
+        "btc": series_to_points(btc_series),
+        "halvings": halvings,
+    })
+
+
 @app.route("/sw.js")
 def sw():
     from flask import send_from_directory
@@ -232,9 +400,12 @@ def post_config():
     data = request.get_json(force=True)
     cfg = load_config()
     for key in DEFAULTS:
-        if key in data:
-            val = data[key]
-            cfg[key] = float(val) if key == "bb_std" else int(val)
+        if key == "extra_emas" or key not in data:
+            continue
+        val = data[key]
+        cfg[key] = float(val) if key == "bb_std" else int(val)
+    if "extra_emas" in data:
+        cfg["extra_emas"] = _sanitize_extra_emas(data["extra_emas"])
     save_config(cfg)
     _status_cache.clear()  # invalidar todos los intervalos al cambiar parámetros
     return jsonify({"ok": True, "config": cfg})
@@ -291,6 +462,18 @@ def status():
 
     ema_fast = _ema(close, cfg["ema_fast"])
     ema_slow = _ema(close, cfg["ema_slow"])
+    sma200 = close.rolling(200).mean()  # usada para clasificar régimen (classify_regime)
+
+    extra_emas_data = [
+        {
+            "period":  item["period"],
+            "color":   item["color"],
+            "visible": True,
+            "data":    _series_to_list(ts, _ema(close, item["period"]), 2),
+        }
+        for item in cfg.get("extra_emas", [])
+        if item["visible"]
+    ]
 
     # Stoch RSI
     stoch_k, stoch_d = _stoch_rsi(close)
@@ -318,9 +501,19 @@ def status():
             continue
         stoch_data.append({"time": int(t.timestamp()), "k": round(float(k), 2), "d": round(float(d), 2)})
 
+    # Régimen de mercado (alcista/bajista/lateral) — siempre sobre daily, independiente
+    # del timeframe activo del chart, porque es contexto macro, no algo que deba
+    # cambiar al alternar 1D/4H/1W. Ver backtest_signals.py: Golden Cross pierde toda
+    # capacidad predictiva en lateral, y el score combinado es contraproducente en bajista.
+    daily_df = df if interval == "1d" else _get_btc_df("1d")
+    regime_series = classify_regime(daily_df["Close"])
+    regime_label = regime_series.iloc[-1] if not regime_series.empty else None
+    regime_label = str(regime_label) if regime_label is not None else None
+
     result = {
         "symbol": "BTC-USD",
         "price": round(float(close.iloc[-1]), 2),
+        "regime": regime_label,
         "signals": signals,
         "ohlcv": ohlcv,
         "rsi": _series_to_list(ts, rsi_series, 2),
@@ -333,15 +526,18 @@ def status():
         "bb_lower": _series_to_list(ts, bb_lower, 2),
         "ema_fast": _series_to_list(ts, ema_fast, 2),
         "ema_slow": _series_to_list(ts, ema_slow, 2),
+        "sma200": _series_to_list(ts, sma200, 2),
+        "extra_emas_data": extra_emas_data,
         "volume": [
             {
                 "time": int(t.timestamp()),
                 "value": round(float(r["Volume"]), 0),
-                "color": "#3fb95044" if float(r["Close"]) >= float(r["Open"]) else "#da363344",
+                "color": "#3fb950aa" if float(r["Close"]) >= float(r["Open"]) else "#da3633aa",
             }
             for t, (_, r) in zip(ts, df.iterrows())
             if not pd.isna(r["Volume"]) and r["Volume"] > 0
         ],
+        "volume_ma": _series_to_list(ts, df["Volume"].rolling(20).mean(), 0),
         "stoch": stoch_data,
         "score": score,
         "atr": _series_to_list(ts, atr_series, 2),
@@ -440,6 +636,122 @@ def fear_and_greed():
         _fng_cache["ts"]   = now
         return jsonify(result)
     except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+
+_EXCHANGES = {
+    "binance": ("Binance", "https://api.binance.com/api/v3/ticker/price",
+                lambda d: {re.sub(r"(USDT|USDC|FDUSD|BUSD|BTC|ETH|BNB|EUR|TRY)$", "", x["symbol"]) for x in d if re.search(r"(USDT|USDC|FDUSD)$", x["symbol"])}),
+    "coinbase": ("Coinbase", "https://api.exchange.coinbase.com/products",
+                 lambda d: {x["base_currency"] for x in d if x.get("status") == "online"}),
+    "kraken": ("Kraken", "https://api.kraken.com/0/public/AssetPairs",
+               lambda d: {(x.get("wsname") or "").split("/")[0].replace("XBT", "BTC") for x in d["result"].values()}),
+    "bybit": ("Bybit", "https://api.bybit.com/v5/market/instruments-info?category=spot&limit=1000",
+              lambda d: {x["baseCoin"] for x in d["result"]["list"] if x.get("status") == "Trading"}),
+    "okx": ("OKX", "https://www.okx.com/api/v5/public/instruments?instType=SPOT",
+            lambda d: {x["baseCcy"] for x in d["data"] if x.get("state") == "live"}),
+    "kucoin": ("KuCoin", "https://api.kucoin.com/api/v2/symbols",
+               lambda d: {x["baseCurrency"] for x in d["data"] if x.get("enableTrading")}),
+    "gateio": ("Gate.io", "https://api.gateio.ws/api/v4/spot/currency_pairs",
+               lambda d: {x["base"] for x in d if x.get("trade_status") == "tradable"}),
+    "bitget": ("Bitget", "https://api.bitget.com/api/v2/spot/public/symbols",
+               lambda d: {x["baseCoin"] for x in d["data"] if x.get("status") == "online"}),
+}
+_ex_cache: dict = {}
+_EX_TTL = 3600
+
+
+def _exchange_symbols(key):
+    cached = _ex_cache.get(key)
+    if cached and time.time() - cached[0] < _EX_TTL:
+        return cached[1]
+    _, url, parse = _EXCHANGES[key]
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            syms = {s.upper() for s in parse(json.loads(resp.read())) if s}
+        _ex_cache[key] = (time.time(), syms)
+        return syms
+    except Exception:
+        return cached[1] if cached else None
+
+
+@app.route("/api/exchanges")
+def exchanges():
+    out = {}
+    for key, (label, _, _) in _EXCHANGES.items():
+        syms = _exchange_symbols(key)
+        if syms:
+            out[key] = {"label": label, "symbols": sorted(syms)}
+    return jsonify(out)
+
+
+@app.route("/simulador")
+def simulador_page():
+    return render_template("simulador.html")
+
+
+@app.route("/api/simulador")
+def simulador_api():
+    import momentum_sim
+    try:
+        a = request.args
+        kw = dict(
+            fee=float(a.get("fee", 0.1)) / 100,
+            slippage=float(a.get("slippage", 0.1)) / 100,
+            min_vol=float(a.get("min_vol", 100000)),
+            max_rise=float(a["max_rise"]) / 100 if a.get("max_rise") else None,
+            exclude=tuple(x.strip() for x in a.get("exclude", "").split(",") if x.strip()),
+        )
+        result = momentum_sim.simulate(
+            threshold=float(a.get("threshold", 3)) / 100, hold_h=int(a.get("hold", 4)),
+            capital=float(a.get("capital", 1000)), size=float(a.get("size", 100)), **kw)
+        result["grid"] = momentum_sim.grid(**kw)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+
+_movers_cache: dict = {"data": None, "ts": 0.0}
+_MOVERS_TTL = 60  # CoinGecko free tier limita requests
+
+
+@app.route("/movers")
+def movers_page():
+    return render_template("movers.html")
+
+
+@app.route("/api/movers")
+def movers():
+    now = time.time()
+    if _movers_cache["data"] is not None and now - _movers_cache["ts"] < _MOVERS_TTL:
+        return jsonify(_movers_cache["data"])
+    try:
+        url = ("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd"
+               "&order=market_cap_desc&per_page=250&page=1&price_change_percentage=1h,24h")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = json.loads(resp.read())
+        coins = [
+            {
+                "symbol": c["symbol"].upper(),
+                "name": c["name"],
+                "image": c.get("image"),
+                "price": c["current_price"],
+                "chg_1h": c["price_change_percentage_1h_in_currency"],
+                "chg_24h": c.get("price_change_percentage_24h_in_currency"),
+                "volume": c.get("total_volume") or 0,
+            }
+            for c in raw
+            if c.get("price_change_percentage_1h_in_currency") is not None
+        ]
+        result = {"coins": coins, "ts": int(now)}
+        _movers_cache["data"] = result
+        _movers_cache["ts"] = now
+        return jsonify(result)
+    except Exception as e:
+        if _movers_cache["data"] is not None:
+            return jsonify(_movers_cache["data"])
         return jsonify({"error": str(e)}), 502
 
 

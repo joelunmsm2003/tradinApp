@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Liquidity Index — Saturno</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css?v=2">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .li-header { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid #30363d; }
+    .li-header a { color:#8b949e; text-decoration:none; font-size:0.85rem; }
+    .li-header a:hover { color:#e6edf3; }
+    #li-chart { width:100%; height:70vh; }
+    .li-legend { display:flex; gap:16px; padding:10px 18px; font-size:0.8rem; color:#8b949e; }
+    .li-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; }
+    .li-note { padding:0 18px 18px; font-size:0.75rem; color:#6e7681; max-width:900px; }
+  </style>
+</head>
+<body>
+  <div class="li-header">
+    <h2 style="margin:0;font-size:1.1rem;">⚡ Liquidity Index</h2>
+    <a href="/">← Volver al dashboard</a>
+  </div>
+  <div class="li-legend">
+    <span><span class="li-dot" style="background:#f0883e;"></span>Liquidity Index (z-score ponderado)</span>
+    <span><span class="li-dot" style="background:#58a6ff;"></span>BTC/USD</span>
+    <span>🏳️ Marcadores = halving</span>
+  </div>
+  <div id="li-chart"></div>
+  <p class="li-note">
+    Índice v1 con pesos provisionales (ver liquidity_index/config.py). La prueba estadística real es la
+    correlación general del histórico completo en <code>python -m liquidity_index.backtest</code> — los
+    marcadores de halving son solo contexto visual (hay apenas 3-4 halvings históricos, muestra insuficiente
+    para sacar conclusiones de ese recorte por sí solo). Correlación ≠ causalidad.
+  </p>
+
+  <script>
+    async function loadLiquidity() {
+      const res = await fetch('/api/liquidity');
+      const data = await res.json();
+
+      const chart = LightweightCharts.createChart(document.getElementById('li-chart'), {
+        layout: { background: { color: '#0d1117' }, textColor: '#c9d1d9' },
+        grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
+        rightPriceScale: { borderColor: '#30363d' },
+        // barSpacing/minBarSpacing bajos: son 16 años de datos diarios, fitContent()
+        // no los comprime lo suficiente con el barSpacing por defecto (6px).
+        timeScale: { borderColor: '#30363d', barSpacing: 0.1, minBarSpacing: 0.01 },
+      });
+
+      const btcSeries = chart.addLineSeries({
+        color: '#58a6ff', lineWidth: 2, priceScaleId: 'right',
+      });
+      btcSeries.setData(data.btc);
+
+      const indexSeries = chart.addLineSeries({
+        color: '#f0883e', lineWidth: 2, priceScaleId: 'left',
+      });
+      chart.priceScale('left').applyOptions({ visible: true, borderColor: '#30363d' });
+      indexSeries.setData(data.liquidity_index);
+
+      const markers = data.halvings.map(h => ({
+        time: h.time,
+        position: 'aboveBar',
+        color: h.es_estimado ? '#6e7681' : '#3fb950',
+        shape: 'arrowDown',
+        text: h.es_estimado ? `Halving #${h.numero} (est.)` : `Halving #${h.numero}`,
+      }));
+      btcSeries.setMarkers(markers);
+
+      chart.timeScale().fitContent();
+      window.addEventListener('resize', () => {
+        chart.applyOptions({ width: document.getElementById('li-chart').clientWidth });
+      });
+    }
+    loadLiquidity().catch(err => {
+      document.getElementById('li-chart').innerHTML =
+        `<p style="color:#da3633;padding:20px;">Error cargando datos: ${err.message}. ¿Corriste los collectors (liquidity_index/run_daily.py --once) y está Postgres arriba?</p>`;
+    });
+  </script>
+</body>
+</html>

@@ -4,29 +4,73 @@ Cada indicador aporta puntos cuando está activo.
 Score alcista >= umbral → alerta de compra de alta confianza.
 Score bajista >= umbral → alerta de venta de alta confianza.
 """
+import json
+import time
+import urllib.request
+
 import pandas as pd
 from indicators import _rsi, _ema, _macd, _stoch_rsi
 
 
+_FNG_CACHE = {"value": None, "ts": 0.0}
+_FNG_TTL = 3600  # 1 hora — el índice solo cambia una vez al día
+
+
+def _get_fng_value():
+    """Fear & Greed Index actual (0-100), cacheado. None si falla la request."""
+    now = time.time()
+    if _FNG_CACHE["value"] is not None and now - _FNG_CACHE["ts"] < _FNG_TTL:
+        return _FNG_CACHE["value"]
+    try:
+        with urllib.request.urlopen("https://api.alternative.me/fng/?limit=1", timeout=5) as resp:
+            data = json.loads(resp.read())
+        value = int(data["data"][0]["value"])
+        _FNG_CACHE["value"] = value
+        _FNG_CACHE["ts"] = now
+        return value
+    except Exception:
+        return None
+
+
 BULLISH_RULES = [
     # (nombre, puntos, función que devuelve bool dado df + series calculadas)
+    # Pesos validados contra backtest_signals.py (correlación con retornos futuros de
+    # BTC, train/test 2023). RSI oversold, Precio bajo BB y Stoch RSI oversold dieron
+    # correlación débil e inconsistente entre train/test — se dejan igual por ahora
+    # (no hay evidencia suficiente para asegurar que estén "al revés", solo que son
+    # ruidosas), pero no se les sube el peso.
     ("RSI oversold",      2, lambda s: float(s["rsi"].iloc[-1]) < s["cfg"]["rsi_oversold"]),
+    # Antes estaba en BEARISH_RULES ("sobrecompra = vender"). El backtest mostró
+    # correlación POSITIVA con retornos futuros de BTC, consistente en los tres
+    # regímenes de mercado (alcista +0.11, bajista +0.10, lateral +0.16 a 90d) — no
+    # es un artefacto de que BTC suba en promedio, se sostiene incluso dentro de
+    # tendencias bajistas confirmadas. Movido a alcista según esa evidencia.
+    ("RSI overbought",    2, lambda s: float(s["rsi"].iloc[-1]) > s["cfg"]["rsi_overbought"]),
     ("MACD alcista",      2, lambda s: float(s["macd"].iloc[-1]) > float(s["signal"].iloc[-1])),
     ("Precio bajo BB",    2, lambda s: float(s["close"].iloc[-1]) < float(s["bb_lower"].iloc[-1])),
     ("Stoch RSI oversold",1, lambda s: float(s["stoch_k"].iloc[-1]) < 20 and
                                        float(s["stoch_k"].iloc[-1]) > float(s["stoch_d"].iloc[-1])),
-    ("Golden Cross",      1, lambda s: float(s["ema_fast"].iloc[-1]) > float(s["ema_slow"].iloc[-1])),
+    # Golden Cross fue, por lejos, la señal individual más fuerte y estable del
+    # backtest (train +0.26/+0.29, test +0.17/+0.14 a 90/180d) — más que el score
+    # combinado completo. Peso subido de 1 a 3 para reflejar eso.
+    ("Golden Cross",      3, lambda s: float(s["ema_fast"].iloc[-1]) > float(s["ema_slow"].iloc[-1])),
     ("Volumen spike",     1, lambda s: _vol_spike(s)),
 ]
 
 BEARISH_RULES = [
-    ("RSI overbought",    2, lambda s: float(s["rsi"].iloc[-1]) > s["cfg"]["rsi_overbought"]),
     ("MACD bajista",      2, lambda s: float(s["macd"].iloc[-1]) < float(s["signal"].iloc[-1])),
     ("Precio sobre BB",   2, lambda s: float(s["close"].iloc[-1]) > float(s["bb_upper"].iloc[-1])),
     ("Stoch RSI overbought",1,lambda s: float(s["stoch_k"].iloc[-1]) > 80 and
                                         float(s["stoch_k"].iloc[-1]) < float(s["stoch_d"].iloc[-1])),
-    ("Death Cross",       1, lambda s: float(s["ema_fast"].iloc[-1]) < float(s["ema_slow"].iloc[-1])),
+    ("Death Cross",       3, lambda s: float(s["ema_fast"].iloc[-1]) < float(s["ema_slow"].iloc[-1])),
     ("Volumen spike",     1, lambda s: _vol_spike(s)),
+    ("Codicia extrema (F&G)",1, lambda s: s["fng"] is not None and s["fng"] >= 75),
+    # Antes estaba en BULLISH_RULES ("miedo = comprar el pánico"). El backtest mostró
+    # lo contrario de forma estable en train Y test: miedo extremo correlacionó
+    # NEGATIVO con retornos futuros (-0.06 a -0.20 a 30/90/180d) — es decir, históricamente
+    # BTC siguió cayendo después de miedo extremo más seguido de lo que rebotó. Movido
+    # a bajista según esa evidencia.
+    ("Miedo extremo (F&G)",1, lambda s: s["fng"] is not None and s["fng"] <= 25),
 ]
 
 MAX_BULLISH = sum(p for _, p, _ in BULLISH_RULES) + 1  # +1 posible del ATR
@@ -79,6 +123,7 @@ def _build_series(df: pd.DataFrame, cfg: dict) -> dict:
         "stoch_d":   stoch_d,
         "volume":    df.get("Volume"),
         "cfg":       cfg,
+        "fng":       _get_fng_value(),
     }
 
 

@@ -1,5 +1,11 @@
+import numpy as np
 import pandas as pd
 from config import RSI_OVERSOLD, RSI_OVERBOUGHT, VIX_SPIKE_PCT, VOLUME_SPIKE_MULT
+
+# Umbral de pendiente de la SMA200 (% de cambio en 90 días) para clasificar régimen
+# en classify_regime() — validado en backtest_signals.py (Golden Cross pierde toda
+# capacidad predictiva en régimen lateral, +0.15 en alcista/bajista vs +0.00 lateral).
+REGIME_SLOPE_THRESHOLD = 0.05
 
 
 def _rsi(series: pd.Series, length: int = 14) -> pd.Series:
@@ -26,6 +32,33 @@ def _bbands(series: pd.Series, length: int = 20, std: float = 2.0):
     std_dev = series.rolling(length).std()
     lower = mid - std * std_dev
     return lower
+
+
+def classify_regime(close: pd.Series) -> pd.Series:
+    """Clasifica cada día en 'alcista', 'bajista' o 'lateral' combinando DOS criterios:
+      1. Posición del precio respecto a la SMA200 (arriba/abajo).
+      2. Pendiente de la SMA200 en los últimos 90 días (subiendo/bajando/plana).
+    Solo se llama 'alcista' cuando AMBOS coinciden (precio arriba Y SMA200 subiendo),
+    y 'bajista' cuando ambos coinciden a la baja. Si el precio y la pendiente de la
+    SMA200 no coinciden (ej: precio ya recuperado pero la media de 200 días todavía
+    bajando porque arrastra un máximo previo) o la pendiente está plana, se clasifica
+    como 'lateral' — un estado de transición, no una tendencia clara en ningún sentido.
+    Sin librerías de TA externas (mismo criterio que el resto del repo)."""
+    sma200 = close.rolling(200).mean()
+    slope = sma200.pct_change(90)
+    price_above = close > sma200
+    slope_up = slope > REGIME_SLOPE_THRESHOLD
+    slope_down = slope < -REGIME_SLOPE_THRESHOLD
+
+    alcista = price_above & slope_up
+    bajista = (~price_above) & slope_down
+
+    regime = pd.Series(
+        np.where(alcista, "alcista", np.where(bajista, "bajista", "lateral")),
+        index=close.index,
+    )
+    regime[slope.isna()] = None
+    return regime
 
 
 def check_rsi(df: pd.DataFrame) -> tuple[bool, str]:

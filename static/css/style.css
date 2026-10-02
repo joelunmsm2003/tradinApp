@@ -212,6 +212,20 @@
     .toggle-btn.active.macd  { color: #58a6ff; }
     .toggle-btn.active.stoch { color: #3fb950; }
 
+    .ema-extra-row {
+      display: flex; align-items: center; gap: 8px; padding: 5px 0;
+    }
+    .ema-extra-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: #3fb950; cursor: pointer; }
+    .ema-extra-row label { font-size: 0.75rem; color: #8b949e; width: 40px; }
+    .ema-extra-row input[type="number"] {
+      width: 0; flex: 1; background: #0d1117; border: 1px solid #30363d; color: #e6edf3;
+      border-radius: 6px; padding: 6px 8px; font-size: 0.8rem;
+    }
+    .ema-extra-row input[type="color"] {
+      width: 26px; height: 26px; padding: 0; border: 1px solid #30363d; border-radius: 6px;
+      background: none; cursor: pointer;
+    }
+
     .chart-card.maximized {
       position: fixed; inset: 0; z-index: 200;
       border-radius: 0; display: flex; flex-direction: column;
@@ -268,6 +282,7 @@
     .conf-tag { font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; }
     .conf-tag.bull { background: #1a3a2088; color: #3fb950; }
     .conf-tag.bear { background: #3a1a1a88; color: #f0883e; }
+    .signal-pts { flex-shrink: 0; font-weight: 700; margin-right: 6px; }
     .conf-alert {
       font-size: 0.75rem; font-weight: 700; text-align: center; padding: 5px 8px;
       border-radius: 6px; margin-top: 8px;

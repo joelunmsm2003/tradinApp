@@ -1,0 +1,16 @@
+services:
+  liquidity_postgres:
+    image: postgres:16-alpine
+    container_name: liquidity_index_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-liquidity}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-liquidity}
+      POSTGRES_DB: ${POSTGRES_DB:-liquidity_index}
+    ports:
+      - "5432:5432"
+    volumes:
+      - liquidity_pgdata:/var/lib/postgresql/data
+
+volumes:
+  liquidity_pgdata:
