@@ -536,6 +536,7 @@
 
   let drawingMode       = null;
   let pendingTrendPoint = null;
+  let draft             = null; // línea colocada, pendiente de confirmar con ✓
   let previewMousePos   = null;
   let savedDrawings     = [];
   let selectedId        = null;
@@ -544,10 +545,10 @@
   let _activeHandle     = null; // { id, point } — endpoint activo visualmente
 
   const DRAW_HINTS = {
-    horizontal: 'Clic para colocar línea horizontal',
-    vertical:   'Clic para colocar línea vertical',
-    trend:      'Clic punto 1 — luego clic punto 2',
-    fib:        'Clic punto 1 (inicio) — luego clic punto 2 (fin)',
+    horizontal: 'Toca para colocar la línea, luego ✓ para guardar',
+    vertical:   'Toca para colocar la línea, luego ✓ para guardar',
+    trend:      'Toca punto 1, luego punto 2, luego ✓ para guardar',
+    fib:        'Toca punto 1 (inicio), punto 2 (fin), luego ✓ para guardar',
     delete:     'Clic sobre una línea para borrarla',
   };
   const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
@@ -572,8 +573,22 @@
     document.getElementById('btn-draw-toggle').style.color = '#f0883e';
   }
 
-  // Botón ✓ "Listo": confirma que terminó de dibujar y sale del modo
-  function saveAndExitDraw() {
+  // Botón ✓ "Listo": guarda el borrador (si lo hay) y sale del modo de dibujo
+  async function saveAndExitDraw() {
+    if (draft) {
+      const d = draft;
+      draft = null;
+      try { await saveDrawing(d); }
+      catch (e) { draft = d; hintEl.textContent = 'No se pudo guardar, intenta de nuevo'; redrawLines(); }
+      return;
+    }
+    if (pendingTrendPoint) { hintEl.textContent = 'Falta el punto 2: toca el gráfico'; return; }
+    selectedId = null;
+    closeDrawToolbar();
+  }
+
+  // Esc: descarta el borrador y sale del modo
+  function cancelDraw() {
     selectedId = null;
     closeDrawToolbar();
   }
@@ -581,6 +596,7 @@
   function setDrawMode(mode) {
     drawingMode = drawingMode === mode ? null : mode;
     pendingTrendPoint = null;
+    draft = null;
     ['h','v','t','fib','del'].forEach(k => document.getElementById('db-'+k)?.classList.remove('active','del-mode'));
     const map = { horizontal:'db-h', vertical:'db-v', trend:'db-t', fib:'db-fib', delete:'db-del' };
     if (drawingMode && map[drawingMode]) {
@@ -851,6 +867,36 @@
     return g;
   }
 
+  function _drawDraft(w, h) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const dash = el => { el.setAttribute('stroke-dasharray','7,4'); el.setAttribute('stroke-width','2'); return el; };
+    const dot  = (x, y) => {
+      const c = document.createElementNS(ns,'circle');
+      c.setAttribute('cx',x); c.setAttribute('cy',y); c.setAttribute('r',5);
+      c.setAttribute('fill',draft.color); c.setAttribute('opacity','0.9');
+      return c;
+    };
+    if (draft.type === 'horizontal') {
+      const y = candleSeries.priceToCoordinate(draft.price);
+      if (y == null) return;
+      svgEl.appendChild(dash(makeLine(0, y, w, y, draft.color)));
+      svgEl.appendChild(_makePriceLabel(w, y, draft.price, draft.color));
+    } else if (draft.type === 'vertical') {
+      const x = priceChart.timeScale().timeToCoordinate(draft.time);
+      if (x == null) return;
+      svgEl.appendChild(dash(makeLine(x, 0, x, h, draft.color)));
+    } else {
+      const x1 = priceChart.timeScale().timeToCoordinate(draft.p1.time);
+      const y1 = candleSeries.priceToCoordinate(draft.p1.price);
+      const x2 = priceChart.timeScale().timeToCoordinate(draft.p2.time);
+      const y2 = candleSeries.priceToCoordinate(draft.p2.price);
+      if (x1==null||y1==null||x2==null||y2==null) return;
+      if (draft.type === 'fib') svgEl.appendChild(_makeFibLevels(x1, y1, x2, y2, draft));
+      svgEl.appendChild(dash(makeLine(x1, y1, x2, y2, draft.color)));
+      svgEl.appendChild(dot(x1, y1)); svgEl.appendChild(dot(x2, y2));
+    }
+  }
+
   function redrawLines() {
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
     _clearHandleOverlays();
@@ -890,13 +936,16 @@
       if (el) svgEl.appendChild(el);
     }
 
+    // Borrador pendiente de confirmar con ✓ (línea discontinua)
+    if (draft) _drawDraft(w, h);
+
     // Punto pendiente de tendencia + preview hacia el mouse
     if (pendingTrendPoint) {
       const px = priceChart.timeScale().timeToCoordinate(pendingTrendPoint.time);
       const py = candleSeries.priceToCoordinate(pendingTrendPoint.price);
       if (px!=null && py!=null) {
         // Línea fantasma de p1 al cursor (finita, sin extender)
-        if (previewMousePos) {
+        if (previewMousePos && !draft) {
           const ghost = document.createElementNS('http://www.w3.org/2000/svg','line');
           ghost.setAttribute('x1',px); ghost.setAttribute('y1',py);
           ghost.setAttribute('x2',previewMousePos.x); ghost.setAttribute('y2',previewMousePos.y);
@@ -1043,10 +1092,11 @@
     }
   });
 
-  // Esc / Enter confirman que terminó de dibujar
+  // Enter confirma (guarda); Esc cancela
   document.addEventListener('keydown', e => {
     if (!drawingMode) return;
-    if (e.key === 'Escape' || e.key === 'Enter') saveAndExitDraw();
+    if (e.key === 'Enter') saveAndExitDraw();
+    else if (e.key === 'Escape') cancelDraw();
   });
 
   // ---- Preview de tendencia al mover el mouse ----
@@ -1072,22 +1122,25 @@
     if (time == null || price == null) return;
     const color = getColor();
 
+    const CONFIRM = 'Toca ✓ para guardar · toca otro punto para moverla';
     if (drawingMode === 'horizontal') {
-      saveDrawing({ type:'horizontal', price:parseFloat(price.toFixed(2)), color });
+      draft = { type:'horizontal', price:parseFloat(price.toFixed(2)), color };
+      hintEl.textContent = CONFIRM;
     } else if (drawingMode === 'vertical') {
-      saveDrawing({ type:'vertical', time, color });
+      draft = { type:'vertical', time, color };
+      hintEl.textContent = CONFIRM;
     } else if (drawingMode === 'trend' || drawingMode === 'fib') {
       if (!pendingTrendPoint) {
         pendingTrendPoint = { time, price: parseFloat(price.toFixed(2)) };
-        hintEl.textContent = 'Clic punto 2 para completar';
-        redrawLines();
+        hintEl.textContent = 'Toca el punto 2';
       } else {
-        saveDrawing({ type:drawingMode, p1:pendingTrendPoint, p2:{time, price:parseFloat(price.toFixed(2))}, color });
-        pendingTrendPoint = null;
-        previewMousePos   = null;
-        hintEl.textContent = DRAW_HINTS[drawingMode];
+        // El punto 1 se mantiene; cada toque posterior mueve el punto 2 del borrador
+        draft = { type:drawingMode, p1:pendingTrendPoint, p2:{time, price:parseFloat(price.toFixed(2))}, color };
+        previewMousePos = null;
+        hintEl.textContent = CONFIRM;
       }
     }
+    redrawLines();
   });
 
   // ---- CRUD ----
