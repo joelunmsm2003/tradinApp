@@ -195,6 +195,7 @@
     _stochData  = data.stoch;
 
     candleSeries.setData(data.ohlcv);
+    _setBars(data.ohlcv);
     bbUpperSeries.setData(data.bb_upper);
     bbMidSeries.setData(data.bb_mid);
     bbLowerSeries.setData(data.bb_lower);
@@ -529,6 +530,36 @@
   }
 
   // ---- Drawing tool ----
+  // ---- Conversión tiempo <-> x con extrapolación ----
+  // lightweight-charts devuelve null para coordenadas a la derecha de la última vela (o a la
+  // izquierda de la primera) y para tiempos fuera de los datos. Las líneas de tendencia largas
+  // se proyectan justo ahí, así que extrapolamos usando el índice lógico y el paso entre velas.
+  let _bars = null; // { first, last, n, step }
+  function _setBars(ohlcv) {
+    const n = ohlcv.length;
+    _bars = n >= 2
+      ? { first: ohlcv[0].time, last: ohlcv[n - 1].time, n, step: ohlcv[n - 1].time - ohlcv[n - 2].time }
+      : null;
+  }
+  function xToTime(x) {
+    const ts = priceChart.timeScale();
+    const t  = ts.coordinateToTime(x);
+    if (t != null || !_bars) return t;
+    const l = ts.coordinateToLogical(x);
+    if (l == null) return null;
+    if (l > _bars.n - 1) return Math.round(_bars.last + (l - (_bars.n - 1)) * _bars.step);
+    if (l < 0)           return Math.round(_bars.first + l * _bars.step);
+    return null;
+  }
+  function timeToX(t) {
+    const ts = priceChart.timeScale();
+    const x  = ts.timeToCoordinate(t);
+    if (x != null || !_bars) return x;
+    if (t > _bars.last)  return ts.logicalToCoordinate(_bars.n - 1 + (t - _bars.last) / _bars.step);
+    if (t < _bars.first) return ts.logicalToCoordinate((t - _bars.first) / _bars.step);
+    return null;
+  }
+
   const svgEl       = document.getElementById('drawing-svg');
   const overlayEl   = document.getElementById('chart-overlay');
   const colorInput  = document.getElementById('draw-color');
@@ -722,9 +753,9 @@
   function _findNearestEndpoint(tx, ty) {
     for (const d of savedDrawings) {
       if (d.type !== 'trend' && d.type !== 'fib') continue;
-      const x1 = priceChart.timeScale().timeToCoordinate(d.p1.time);
+      const x1 = timeToX(d.p1.time);
       const y1 = candleSeries.priceToCoordinate(d.p1.price);
-      const x2 = priceChart.timeScale().timeToCoordinate(d.p2.time);
+      const x2 = timeToX(d.p2.time);
       const y2 = candleSeries.priceToCoordinate(d.p2.price);
       for (const [px, py, pt] of [[x1,y1,'p1'],[x2,y2,'p2']]) {
         if (px == null || py == null) continue;
@@ -805,7 +836,7 @@
     function onMove(ev) {
       ev.preventDefault();
       if (!dragEndpoint) return;
-      const newTime  = priceChart.timeScale().coordinateToTime(ev.touches[0].clientX - rect.left);
+      const newTime  = xToTime(ev.touches[0].clientX - rect.left);
       const newPrice = candleSeries.coordinateToPrice(ev.touches[0].clientY - rect.top);
       const idx = savedDrawings.findIndex(s => s.id === dragEndpoint.id);
       if (idx !== -1 && newTime && newPrice != null) {
@@ -882,13 +913,13 @@
       svgEl.appendChild(dash(makeLine(0, y, w, y, draft.color)));
       svgEl.appendChild(_makePriceLabel(w, y, draft.price, draft.color));
     } else if (draft.type === 'vertical') {
-      const x = priceChart.timeScale().timeToCoordinate(draft.time);
+      const x = timeToX(draft.time);
       if (x == null) return;
       svgEl.appendChild(dash(makeLine(x, 0, x, h, draft.color)));
     } else {
-      const x1 = priceChart.timeScale().timeToCoordinate(draft.p1.time);
+      const x1 = timeToX(draft.p1.time);
       const y1 = candleSeries.priceToCoordinate(draft.p1.price);
-      const x2 = priceChart.timeScale().timeToCoordinate(draft.p2.time);
+      const x2 = timeToX(draft.p2.time);
       const y2 = candleSeries.priceToCoordinate(draft.p2.price);
       if (x1==null||y1==null||x2==null||y2==null) return;
       if (draft.type === 'fib') svgEl.appendChild(_makeFibLevels(x1, y1, x2, y2, draft));
@@ -915,13 +946,13 @@
         }
         continue;
       } else if (d.type === 'vertical') {
-        const x = priceChart.timeScale().timeToCoordinate(d.time);
+        const x = timeToX(d.time);
         if (x == null) continue;
         el = makeLine(x, 0, x, h, d.color, d);
       } else if (d.type === 'trend' || d.type === 'fib') {
-        const x1 = priceChart.timeScale().timeToCoordinate(d.p1.time);
+        const x1 = timeToX(d.p1.time);
         const y1 = candleSeries.priceToCoordinate(d.p1.price);
-        const x2 = priceChart.timeScale().timeToCoordinate(d.p2.time);
+        const x2 = timeToX(d.p2.time);
         const y2 = candleSeries.priceToCoordinate(d.p2.price);
         if (x1==null||y1==null||x2==null||y2==null) continue;
         if (d.type === 'fib') svgEl.appendChild(_makeFibLevels(x1, y1, x2, y2, d));
@@ -941,7 +972,7 @@
 
     // Punto pendiente de tendencia + preview hacia el mouse
     if (pendingTrendPoint) {
-      const px = priceChart.timeScale().timeToCoordinate(pendingTrendPoint.time);
+      const px = timeToX(pendingTrendPoint.time);
       const py = candleSeries.priceToCoordinate(pendingTrendPoint.price);
       if (px!=null && py!=null) {
         // Línea fantasma de p1 al cursor (finita, sin extender)
@@ -991,7 +1022,7 @@
       const rect = svgEl.getBoundingClientRect();
       const curX = clientX - rect.left;
       const curY = clientY - rect.top;
-      const newTime  = priceChart.timeScale().coordinateToTime(curX);
+      const newTime  = xToTime(curX);
       const newPrice = candleSeries.coordinateToPrice(curY);
       const idx = savedDrawings.findIndex(s => s.id === dragEndpoint.id);
       if (idx !== -1 && newTime && newPrice != null) {
@@ -1015,19 +1046,19 @@
       const newPrice = candleSeries.coordinateToPrice(origY + dy);
       if (newPrice != null) savedDrawings[idx].price = parseFloat(newPrice.toFixed(2));
     } else if (d.type === 'vertical') {
-      const origX = priceChart.timeScale().timeToCoordinate(d.time);
+      const origX = timeToX(d.time);
       if (origX == null) return;
-      const newTime = priceChart.timeScale().coordinateToTime(origX + dx);
+      const newTime = xToTime(origX + dx);
       if (newTime != null) savedDrawings[idx].time = newTime;
     } else if (d.type === 'trend' || d.type === 'fib') {
-      const ox1 = priceChart.timeScale().timeToCoordinate(d.p1.time);
+      const ox1 = timeToX(d.p1.time);
       const oy1 = candleSeries.priceToCoordinate(d.p1.price);
-      const ox2 = priceChart.timeScale().timeToCoordinate(d.p2.time);
+      const ox2 = timeToX(d.p2.time);
       const oy2 = candleSeries.priceToCoordinate(d.p2.price);
       if (ox1==null||oy1==null||ox2==null||oy2==null) return;
-      const nt1 = priceChart.timeScale().coordinateToTime(ox1+dx);
+      const nt1 = xToTime(ox1+dx);
       const np1 = candleSeries.coordinateToPrice(oy1+dy);
-      const nt2 = priceChart.timeScale().coordinateToTime(ox2+dx);
+      const nt2 = xToTime(ox2+dx);
       const np2 = candleSeries.coordinateToPrice(oy2+dy);
       if (nt1&&np1&&nt2&&np2) {
         savedDrawings[idx].p1 = { time:nt1, price:parseFloat(np1.toFixed(2)) };
@@ -1117,7 +1148,7 @@
     const rect  = overlayEl.getBoundingClientRect();
     const x     = e.clientX - rect.left;
     const y     = e.clientY - rect.top;
-    const time  = priceChart.timeScale().coordinateToTime(x);
+    const time  = xToTime(x);
     const price = candleSeries.coordinateToPrice(y);
     if (time == null || price == null) return;
     const color = getColor();
